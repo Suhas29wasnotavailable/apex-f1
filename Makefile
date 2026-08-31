@@ -36,5 +36,5 @@ test: ## Run the test suite, excluding anything that needs the network
 check: lint types test ## Everything CI runs
 
 clean: ## Remove caches and build artefacts, but never downloaded race data
-	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage
+	rm -rf .pytest_cache .mypy_cache .ruff_cache .hypothesis htmlcov .coverage
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
