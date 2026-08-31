@@ -1,0 +1,42 @@
+# APEX default configuration.
+#
+# These values encode the calibration plan agreed at P0. Override any of them with an
+# APEX_-prefixed environment variable (double underscore for nesting) rather than editing
+# this file for a one-off experiment.
+
+seed: 20260901
+
+paths:
+  fastf1_cache: data/fastf1_cache
+  processed: data/processed
+  params: params
+  figures: docs/figures
+  mlruns: mlruns
+
+data:
+  # 2022-2025 is a single aero regulation era. Pooling across the 2021/2022 boundary would make
+  # the fitted degradation and overtaking coefficients non-stationary.
+  train_seasons: [2022, 2023, 2024]
+  holdout_seasons: [2025]
+  session: R
+  # Deliberately opposite extremes: high degradation and easy overtaking versus the reverse.
+  pilot_events: ["Bahrain Grand Prix", "Monaco Grand Prix"]
+  dry_only: true
+  max_rainfall_fraction: 0.05
+  wet_compounds: ["INTERMEDIATE", "WET"]
+
+calibration:
+  dry_compounds: ["SOFT", "MEDIUM", "HARD"]
+  dirty_air_saturation_s: 2.0
+  degradation_degree: 2
+  min_races_per_circuit: 2
+  exclusions:
+    require_accurate: true
+    drop_pit_in_out: true
+    drop_opening_laps: 1
+    excluded_track_status: ["2", "4", "5", "6", "7"]
+    drop_lap_after_safety_car: true
+    drop_deleted: true
+    drop_fastf1_generated: true
+    max_lap_time_ratio: 1.10
+    min_clean_laps_per_stint: 4
