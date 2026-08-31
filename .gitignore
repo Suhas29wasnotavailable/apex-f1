@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# APEX generated artefacts -- every one of these is regenerable by a make target.
+# Nothing here is a source of truth; if a number cannot be regenerated, it is a bug.
+/data/fastf1_cache/
+/data/processed/
+/params/*.json
+/params_full/
+/mlruns/
+/docs/figures/*.png
+/docs/figures/*.svg
+/docs/calibration_report.md
+!/params/params.schema.json
+
+# Frontend
+web/node_modules/
+web/dist/
+web/.vite/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
