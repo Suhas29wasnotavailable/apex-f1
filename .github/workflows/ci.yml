@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: lint, types, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # --locked fails if uv.lock is stale, so a dependency change cannot land unlocked.
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Lint
+        run: uv run ruff check --output-format=github .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      - name: Types
+        run: uv run mypy
+
+      # CI has no access to the F1 timing API. Tests that need real data are marked `network`
+      # and run locally; committed fixtures cover the same code paths here.
+      - name: Tests
+        run: uv run pytest -m "not network" --cov=apex --cov-report=term-missing
