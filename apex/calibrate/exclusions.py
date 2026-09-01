@@ -33,7 +33,7 @@ import polars as pl
 
 from apex.config import AppSettings, get_settings
 
-__all__ = ["CleaningReport", "clean_laps", "safety_car_laps"]
+__all__ = ["CleaningReport", "clean_laps", "is_safety_car_lap"]
 
 RACE_KEYS: Final = ("season", "round")
 """Columns identifying one race."""
@@ -80,9 +80,12 @@ def _contains_any(column: str, codes: tuple[str, ...]) -> pl.Expr:
     return pl.any_horizontal([filled.str.contains(code, literal=True) for code in codes])
 
 
-def safety_car_laps(laps: pl.DataFrame, settings: AppSettings | None = None) -> pl.Expr:
-    """Expression marking laps run wholly or partly under a safety car or VSC."""
-    del laps
+def is_safety_car_lap(settings: AppSettings | None = None) -> pl.Expr:
+    """Predicate matching laps run wholly or partly under a safety car or VSC.
+
+    Shared with :mod:`apex.calibrate.pit`, which needs the same test for the opposite reason: the
+    pace model discards those laps, and pit loss has to know which stops were made during them.
+    """
     settings = settings or get_settings()
     return _contains_any("track_status", settings.calibration.exclusions.safety_car_track_status)
 
@@ -94,7 +97,7 @@ def _flag_laps_after_safety_car(laps: pl.DataFrame, settings: AppSettings) -> pl
     ran, not the next lap that happened to survive an earlier rule.
     """
     return laps.sort(*CAR_KEYS, "lap").with_columns(
-        safety_car_laps(laps, settings)
+        is_safety_car_lap(settings)
         .shift(1)
         .over(list(CAR_KEYS))
         .fill_null(value=False)

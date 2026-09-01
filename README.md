@@ -27,10 +27,10 @@ against held-out real races with published error metrics (phase P2).
 
 ## What has been measured
 
-Fitted from **56 dry races at 25 circuits** in 2022–2024, using 50,583 of 61,358 laps. The 2025
-season is held out and has not been seen by any of these numbers. Each carries a 95% interval;
-the full table, with per-circuit values and the audit of every excluded lap, is written to
-`docs/calibration_report.md` by `make calibrate`.
+Fitted from **56 dry races at 25 circuits** in 2022–2024, using 50,583 of 61,358 laps. All 92
+races of 2022–2025 are ingested; the 21 dry races of 2025 are held out and have not been seen by
+any of these numbers. Each carries a 95% interval; the full table, with per-circuit values and the
+audit of every excluded lap, is written to `docs/calibration_report.md` by `make calibrate`.
 
 | Parameter | Estimate |
 |---|---|

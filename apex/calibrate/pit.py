@@ -30,7 +30,7 @@ import polars as pl
 from pydantic import BaseModel, ConfigDict, Field
 
 from apex.calibrate.estimates import Estimate
-from apex.calibrate.exclusions import CAR_KEYS, safety_car_laps
+from apex.calibrate.exclusions import CAR_KEYS, is_safety_car_lap
 from apex.calibrate.pooling import partial_pool
 from apex.config import AppSettings, get_settings
 
@@ -105,11 +105,8 @@ def pit_stops(all_laps: pl.DataFrame, settings: AppSettings | None = None) -> pl
         reference.backward_fill().shift(-1).over(list(CAR_KEYS)).alias("_after"),
         pl.col("lap_time_s").shift(-1).over(list(CAR_KEYS)).alias("_out_lap_s"),
         pl.col("is_pit_out").shift(-1).over(list(CAR_KEYS)).alias("_next_is_out"),
-        safety_car_laps(ordered, settings).alias("_neutralised"),
-        safety_car_laps(ordered, settings)
-        .shift(-1)
-        .over(list(CAR_KEYS))
-        .alias("_next_neutralised"),
+        is_safety_car_lap(settings).alias("_neutralised"),
+        is_safety_car_lap(settings).shift(-1).over(list(CAR_KEYS)).alias("_next_neutralised"),
     )
 
     stops = with_context.filter(

@@ -89,7 +89,9 @@ calibration diagnostic, then run the full 2022–2025 pull in the background.
 - **`docs/calibration_report.md`** — the same file rendered for a human to argue with, generated
   from `params.json` alone so the two cannot drift apart.
 - **CLI**: `apex ingest`, `races`, `laps`, `calibrate`, `params`; `make ingest`, `make calibrate`.
-- **91 of ~96 races ingested** across 2022–2025. **163 tests**, all green.
+- **All 92 races of 2022–2025 ingested** — 68 in the training seasons of which 56 are dry, and 24
+  held out in 2025 of which 21 are dry. **163 tests**, all green. (ADR-0002 estimated "roughly 96
+  races before the dry-race filter"; the calendar actually held 92, and 77 survived the filter.)
 
 ### What the data says
 
@@ -167,9 +169,11 @@ shortest, and roughly two races in three see a neutralisation of some kind.
 - **The fitted quadratics are negative**, meaning degradation flattens with tyre age rather than
   cliffing. That is almost certainly selection: a stint only runs long when the tyres are behaving.
   Modelling the pit decision jointly with the pace would fix it and is out of scope for P1.
-- **No circuit variation is detectable in safety-car hazard or dirty air.** With two or three races
+- **No circuit variation is detectable in safety-car hazard or dirty air.** With one to three races
   per circuit, Monaco and Monza get the same neutralisation rate, which is certainly wrong. It is
-  what 56 races support; more races will resolve it or fail to, and either is a finding.
+  what 56 races support. The full calendar is now ingested, so this will not improve without
+  either widening the regulation era — which ADR-0002 rejected for good reasons — or borrowing
+  strength from something other than race counts, such as circuit characteristics.
 - **The gap to the car ahead is measured at the start/finish line.** It is the right measure for
   lapped traffic but wrong for one crossing after a car pits or retires.
 - **Pit loss under a safety car is not fitted.** Those stops are excluded from the green-flag
@@ -184,9 +188,11 @@ metrics against races the calibration never saw.
 
 ### Open questions
 
-- **Should the remaining races be pulled before P2?** 56 dry training races is enough to fit, but
-  five circuits still have one race and cannot be fitted at all. The rate limit makes this a matter
-  of hours, not of engineering.
+- **Four circuits still have one training race each** — Shanghai, Le Castellet, Monaco and Imola —
+  so they cannot be fitted at all and take the pooled values wholesale. Nothing can be done about
+  that within the regulation era: Le Castellet has not been raced since 2022, and the others fall
+  where the calendar put them. It is worth stating in `LIMITATIONS.md` at P7, because Monaco is
+  precisely the circuit whose parameters differ most from the pooled mean.
 - **Is the negative curvature worth modelling around now or later?** It biases long-stint
   predictions optimistically, which is exactly where strategy decisions are made.
 - **Which Grand Prix is the flagship demo?** Unchanged from P0: best chosen in P2 from the

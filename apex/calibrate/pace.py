@@ -404,7 +404,7 @@ def fit_circuit_pace(laps: pl.DataFrame, settings: AppSettings | None = None) ->
     for circuit in circuits:
         fit = fits.get(circuit)
         at_circuit = laps.filter(pl.col("circuit") == circuit)
-        local = _local_counts(at_circuit, compounds)
+        local = _local_counts(at_circuit, compounds, settings.calibration.degradation_degree)
         # A coefficient this circuit could not estimate takes the pooled value, labelled with a
         # shrinkage of zero and with the laps this circuit actually ran -- never the pooled
         # lap count, which would claim evidence the circuit does not have.
@@ -438,7 +438,9 @@ def fit_circuit_pace(laps: pl.DataFrame, settings: AppSettings | None = None) ->
     )
 
 
-def _local_counts(at_circuit: pl.DataFrame, compounds: Sequence[str]) -> dict[str, int]:
+def _local_counts(
+    at_circuit: pl.DataFrame, compounds: Sequence[str], degree: int
+) -> dict[str, int]:
     """Laps behind each coefficient at one circuit: the compound's own laps where the coefficient
     belongs to a compound, and the circuit's total otherwise."""
     counts = {name: int(value) for name, value in at_circuit.group_by("compound").len().iter_rows()}
@@ -446,7 +448,7 @@ def _local_counts(at_circuit: pl.DataFrame, compounds: Sequence[str]) -> dict[st
     for compound in compounds:
         laps_here = counts.get(compound, 0)
         local[compound_offset_term(compound)] = laps_here
-        for power in (1, 2):
+        for power in range(1, degree + 1):
             local[degradation_term(compound, power)] = laps_here
     return local
 
