@@ -12,6 +12,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 import polars as pl
+
 from apex.config import AppSettings, PathSettings
 from apex.data.schema import LAP_SCHEMA, EventMeta, conform_lap_frame
 from apex.data.sources import RawRace

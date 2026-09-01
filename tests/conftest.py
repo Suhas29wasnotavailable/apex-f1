@@ -11,6 +11,7 @@ import os
 from collections.abc import Iterator
 
 import pytest
+
 from apex.config import get_settings
 
 

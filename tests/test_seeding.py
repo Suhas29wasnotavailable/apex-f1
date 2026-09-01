@@ -10,12 +10,13 @@ from __future__ import annotations
 import doctest
 import random
 
-import apex.seeding
 import numpy as np
 import pytest
-from apex.seeding import SeedBundle, seed_global_libraries
 from hypothesis import given
 from hypothesis import strategies as st
+
+import apex.seeding
+from apex.seeding import SeedBundle, seed_global_libraries
 
 
 def _draw(bundle: SeedBundle, name: str, count: int = 5) -> list[int]:

@@ -30,6 +30,8 @@ calibration:
   dirty_air_saturation_s: 2.0
   degradation_degree: 2
   min_races_per_circuit: 2
+  min_laps_per_cell: 40
+  confidence_level: 0.95
   exclusions:
     require_accurate: true
     drop_pit_in_out: true

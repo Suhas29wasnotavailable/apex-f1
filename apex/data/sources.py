@@ -23,6 +23,7 @@ import polars as pl
 from apex.data.schema import EventMeta, ScheduledRace, conform_lap_frame
 
 __all__ = [
+    "RateLimitError",
     "RawRace",
     "fastf1_version",
     "fetch_race",
@@ -63,6 +64,15 @@ RAW_LAP_COLUMNS: Final = (
 _INSTALL_HINT: Final = (
     "fastf1 is not installed. It is an optional dependency: `uv sync --extra data`."
 )
+
+
+class RateLimitError(RuntimeError):
+    """FastF1's timing API quota is exhausted.
+
+    Raised in APEX's own vocabulary rather than FastF1's, so that callers can stop a long pull
+    cleanly without importing the optional dependency to name its exception. Everything already
+    written stays on disk, and re-running the same command resumes where it stopped.
+    """
 
 
 def _fastf1() -> ModuleType:
@@ -225,8 +235,15 @@ def fetch_race(season: int, event: str | int, cache_dir: Path) -> RawRace:
             re-downloading a full season is slow and puts avoidable load on the timing API.
     """
     fastf1 = _configure(cache_dir)
-    session = fastf1.get_session(season, event, "R")
-    session.load(telemetry=False, weather=True, messages=False)
+    from fastf1.req import (  # noqa: PLC0415 - lazy, as above
+        RateLimitExceededError,
+    )
+
+    try:
+        session = fastf1.get_session(season, event, "R")
+        session.load(telemetry=False, weather=True, messages=False)
+    except RateLimitExceededError as error:
+        raise RateLimitError(str(error)) from error
 
     laps_pandas = session.laps.reset_index(drop=True)
     weather = laps_pandas.get_weather_data().reset_index(drop=True)

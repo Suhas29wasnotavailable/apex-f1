@@ -15,6 +15,7 @@ from apex import __version__
 from apex.calibrate.exclusions import clean_laps
 from apex.config import AppSettings, get_settings
 from apex.data import SessionRecord, ingest_seasons, load_laps, manifest_frame
+from apex.data.sources import RateLimitError
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="APEX -- F1 race digital twin.")
 
@@ -77,9 +78,19 @@ def ingest(
     typer.echo(
         f"Ingesting seasons {list(seasons)}" + (f", events {list(events)}" if events else "")
     )
-    records = ingest_seasons(seasons, settings, events=events, force=force, on_progress=report)
+    try:
+        records = ingest_seasons(seasons, settings, events=events, force=force, on_progress=report)
+    except RateLimitError as limit:
+        stored = manifest_frame(settings)
+        typer.echo(f"\nTiming API rate limit reached ({limit}).")
+        typer.echo(
+            f"{stored.height} races are on disk and nothing was lost. "
+            "Re-run the same command once the quota resets to continue where this stopped."
+        )
+        raise typer.Exit(code=75) from limit  # EX_TEMPFAIL: retry later, nothing is wrong
+
     dry = sum(1 for record in records if record.is_dry)
-    typer.echo(f"{len(records)} races on disk, {dry} dry.")
+    typer.echo(f"{len(records)} races ingested this run, {dry} dry.")
 
 
 @app.command()

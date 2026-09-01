@@ -10,8 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from apex.config import AppSettings, DataSettings, PathSettings, get_settings
 from pydantic import ValidationError
+
+from apex.config import AppSettings, DataSettings, PathSettings, get_settings
 
 
 def test_defaults_load_from_yaml() -> None:

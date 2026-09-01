@@ -13,6 +13,7 @@ from typing import Any
 
 import polars as pl
 import pytest
+
 from apex.config import AppSettings, DataSettings
 from apex.data import (
     LAP_SCHEMA,
@@ -27,7 +28,6 @@ from apex.data import (
 from apex.data.ingest import classify_dryness, record_path, summarise, write_race
 from apex.data.schema import SessionRecord
 from apex.data.sources import RawRace, to_lap_frame
-
 from tests.factories import lap_frame, raw_lap, raw_race, settings_in, stint
 
 # --------------------------------------------------------------------------- translation

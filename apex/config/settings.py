@@ -181,6 +181,15 @@ class CalibrationSettings(_Frozen):
     min_races_per_circuit: int = Field(default=2, ge=1)
     """Circuits below this are still fitted, but shrink hard toward the pooled compound mean."""
 
+    min_laps_per_cell: int = Field(default=40, ge=10)
+    """A circuit-and-compound cell below this is not fitted separately at all; it takes the
+    pooled estimate. Below roughly this many laps the circuit fit is noise, and shrinkage on a
+    noise estimate is still an estimate built on noise."""
+
+    confidence_level: float = Field(default=0.95, gt=0.5, lt=1.0)
+    """Coverage of every published interval. One number, applied everywhere, so no interval in
+    this project is quietly narrower than another."""
+
 
 class AppSettings(BaseSettings):
     """Top-level configuration object."""

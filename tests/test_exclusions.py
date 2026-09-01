@@ -12,9 +12,9 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+
 from apex.calibrate.exclusions import clean_laps
 from apex.config import AppSettings, CalibrationSettings, ExclusionSettings
-
 from tests.factories import lap, lap_frame, settings_in, stint
 
 

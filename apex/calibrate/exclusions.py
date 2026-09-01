@@ -1,10 +1,14 @@
-"""Deciding which laps may inform a parameter, and reporting what that cost.
+"""Deciding which laps may inform the pace model, and reporting what that cost.
 
 A lap time is only evidence about tyre degradation if nothing else dominated it. Safety cars,
 pit lane travel, deleted laps, spins and standing starts all produce lap times that are real but
 uninformative, and a degradation slope fitted through them is confidently wrong.
 
 Two commitments make the filtering honest rather than convenient:
+
+This is the green-flag pace filter specifically. Pit loss and safety-car hazard are estimated
+from the events these rules deliberately remove, so those models do their own, looser filtering
+against the unfiltered race rather than reusing this one.
 
 *   **Rules are declared in configuration, not chosen per circuit.** The same pipeline runs on
     every race. There is no hand-picking of incidents.
@@ -26,6 +30,7 @@ from dataclasses import dataclass
 from typing import Final
 
 import polars as pl
+
 from apex.config import AppSettings, get_settings
 
 __all__ = ["CleaningReport", "clean_laps", "safety_car_laps"]
@@ -107,8 +112,11 @@ def _rules(settings: AppSettings) -> list[tuple[str, Callable[[pl.DataFrame], pl
     exclusions = settings.calibration.exclusions
     calibration = settings.calibration
     rules: list[tuple[str, Callable[[pl.DataFrame], pl.DataFrame]]] = [
-        # Not configurable: a lap with no recorded time carries no information at all.
+        # Not configurable: without a lap time there is no observation, and without a tyre age
+        # the observation cannot be placed on a degradation curve. FastF1 leaves tyre age unknown
+        # for a small number of laps where the timing feed never reported a stint change.
         ("missing_lap_time", lambda frame: frame.filter(pl.col("lap_time_s").is_not_null())),
+        ("missing_tyre_age", lambda frame: frame.filter(pl.col("tyre_life").is_not_null())),
         (
             "wet_or_unknown_compound",
             lambda frame: frame.filter(pl.col("compound").is_in(calibration.dry_compounds)),

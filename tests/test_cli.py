@@ -7,13 +7,13 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
+
 from apex import __version__
 from apex.cli import app
 from apex.config import get_settings
 from apex.data.ingest import summarise, write_race
 from apex.data.sources import to_lap_frame
-from typer.testing import CliRunner
-
 from tests.factories import raw_lap, raw_race
 
 runner = CliRunner()

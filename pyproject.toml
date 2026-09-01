@@ -84,6 +84,11 @@ ignore = [
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
+# Stated explicitly rather than inferred: `src` makes modules *inside* those directories
+# first-party, which leaves `apex` itself ambiguous and groups it inconsistently between files.
+[tool.ruff.lint.isort]
+known-first-party = ["apex", "tests"]
+
 # --------------------------------------------------------------------------- mypy
 [tool.mypy]
 plugins = ["pydantic.mypy"]

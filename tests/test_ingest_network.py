@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 import pytest
+
 from apex.calibrate.exclusions import clean_laps
 from apex.config import PROJECT_ROOT, AppSettings, PathSettings
 from apex.data import LAP_SCHEMA, SessionRecord, ingest_race, load_laps
