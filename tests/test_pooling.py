@@ -6,8 +6,6 @@ intervals for sparsely-observed circuits.
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from apex.calibrate.estimates import Estimate
@@ -68,7 +66,9 @@ def test_shrunk_estimates_are_never_less_certain_than_the_ones_they_came_from() 
     }
     pooling = partial_pool(observations, level=LEVEL)
     for key, original in observations.items():
-        assert pooling.estimates[key].std_error <= effective_standard_error(original) + 1e-12
+        shrunk = pooling.estimates[key].std_error
+        assert shrunk is not None
+        assert shrunk <= effective_standard_error(original) + 1e-12
 
 
 def test_evidence_is_weighed_by_interval_width_not_by_standard_error_alone() -> None:
@@ -83,7 +83,7 @@ def test_a_group_with_no_usable_interval_contributes_nothing_and_takes_the_mean(
     pooling = partial_pool(
         {"solid": estimate(0.30, 0.01), "hopeless": estimate(-5.0, 0.01, dof=0.0)}, level=LEVEL
     )
-    assert math.isinf(estimate(-5.0, 0.01, dof=0.0).interval[1])
+    assert estimate(-5.0, 0.01, dof=0.0).interval is None, "one cluster supports no interval"
     assert pooling.estimates["hopeless"].shrinkage == 0.0
     assert pooling.estimates["hopeless"].value == pytest.approx(0.30, abs=1e-6)
     assert pooling.mean.value == pytest.approx(0.30, abs=1e-6)

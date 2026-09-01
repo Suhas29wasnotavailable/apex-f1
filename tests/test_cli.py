@@ -23,6 +23,8 @@ runner = CliRunner()
 def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Point the process-wide settings at an empty temporary processed store."""
     monkeypatch.setenv("APEX_PATHS__PROCESSED", str(tmp_path / "processed"))
+    monkeypatch.setenv("APEX_PATHS__PARAMS", str(tmp_path / "params"))
+    monkeypatch.setenv("APEX_PATHS__FIGURES", str(tmp_path / "docs" / "figures"))
     get_settings.cache_clear()
     yield tmp_path
     get_settings.cache_clear()
@@ -93,4 +95,18 @@ def test_laps_refuses_to_report_on_nothing(store: Path) -> None:
     result = runner.invoke(app, ["laps", "--season", "2024"])
     assert result.exit_code == 1
     assert "apex ingest" in result.stdout
+    assert store.exists()
+
+
+def test_calibrate_refuses_to_fit_from_an_empty_store(store: Path) -> None:
+    """A parameter file built from nothing would look like a result. It must not be written."""
+    result = runner.invoke(app, ["calibrate"])
+    assert result.exit_code != 0
+    assert not (store / "params").exists()
+
+
+def test_params_explains_itself_before_anything_is_fitted(store: Path) -> None:
+    monkeypatched = runner.invoke(app, ["params"])
+    assert monkeypatched.exit_code == 1
+    assert "apex calibrate" in monkeypatched.stdout
     assert store.exists()

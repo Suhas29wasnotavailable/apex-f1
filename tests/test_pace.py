@@ -12,6 +12,7 @@ import numpy as np
 import polars as pl
 import pytest
 
+from apex.calibrate.exclusions import clean_laps
 from apex.calibrate.features import add_features
 from apex.calibrate.pace import fit_circuit_pace, fit_pace
 from apex.config import AppSettings, CalibrationSettings, ExclusionSettings
@@ -21,6 +22,7 @@ TRUE_DEGRADATION = {"SOFT": 0.12, "MEDIUM": 0.08, "HARD": 0.05}
 TRUE_OFFSET = {"SOFT": 0.0, "MEDIUM": 0.4, "HARD": 0.8}
 TRUE_PROGRESS = -3.0
 TRUE_DIRTY_AIR = 0.6
+TRUE_PIT_LOSS = 21.0
 SATURATION = 2.0
 BASE_LAP_TIME = 90.0
 CLEAN_AIR_GAP = 40.0
@@ -84,6 +86,8 @@ def simulated_race(
             compound = plans[index][stint_number - 1]
             age = float(lap_number - 1 if stint_number == 1 else lap_number - stop)
             progress = (lap_number - 1) / (total_laps - 1)
+            is_in_lap = lap_number == stop
+            is_out_lap = lap_number == stop + 1
             lap_time = (
                 BASE_LAP_TIME
                 + pace[index]
@@ -91,6 +95,7 @@ def simulated_race(
                 + slopes[compound] * age
                 + TRUE_PROGRESS * progress
                 + TRUE_DIRTY_AIR * float(np.exp(-gap / SATURATION))
+                + (TRUE_PIT_LOSS / 2 if is_in_lap or is_out_lap else 0.0)
                 + float(rng.normal(0.0, noise))
             )
             rows.append(
@@ -106,13 +111,22 @@ def simulated_race(
                     tyre_life=int(age),
                     lap_time_s=lap_time,
                     lap_end_s=crossing,
+                    is_pit_in=is_in_lap,
+                    pit_in_s=crossing if is_in_lap else None,
+                    is_pit_out=is_out_lap,
+                    pit_out_s=crossing - 20.0 if is_out_lap else None,
                 )
             )
     return rows
 
 
 def simulated_season(circuits: dict[str, int], *, seed: int = 7, **kwargs: object) -> pl.DataFrame:
-    """Several races per circuit, generated from the same truth."""
+    """Several races per circuit, generated from the same truth and put through the real pipeline.
+
+    Features then exclusions, in that order and by the production functions, so that a test of the
+    fit is a test of what the fit will actually be handed -- including the in- and out-laps the
+    rules are supposed to remove.
+    """
     rng = np.random.default_rng(seed)
     rows: list[dict[str, object]] = []
     round_number = 0
@@ -122,7 +136,7 @@ def simulated_season(circuits: dict[str, int], *, seed: int = 7, **kwargs: objec
             rows.extend(
                 simulated_race(2023, round_number, circuit, rng=rng, **kwargs)  # type: ignore[arg-type]
             )
-    return add_features(lap_frame(rows), LINEAR)
+    return clean_laps(add_features(lap_frame(rows), LINEAR), LINEAR).laps
 
 
 def test_degradation_slopes_are_recovered() -> None:
@@ -151,8 +165,9 @@ def test_intervals_cover_the_truth() -> None:
     """An interval that does not contain the answer is worse than no interval at all."""
     model = fit_pace(simulated_season({"Alpha": 4, "Beta": 4}), LINEAR)
     for compound, truth in TRUE_DEGRADATION.items():
-        low, high = model.compound(compound).coefficients[0].interval
-        assert low <= truth <= high
+        interval = model.compound(compound).coefficients[0].interval
+        assert interval is not None
+        assert interval[0] <= truth <= interval[1]
 
 
 def test_the_dirty_air_penalty_is_recovered_from_cars_running_close() -> None:
@@ -198,7 +213,9 @@ def test_a_circuit_that_genuinely_differs_keeps_its_own_slope() -> None:
         round_number += 1
         rows.extend(simulated_race(2023, round_number, "Gentle", degradation=gentle, rng=rng))
 
-    fitted = fit_circuit_pace(add_features(lap_frame(rows), LINEAR), LINEAR)
+    fitted = fit_circuit_pace(
+        clean_laps(add_features(lap_frame(rows), LINEAR), LINEAR).laps, LINEAR
+    )
     harsh = fitted.circuits["Harsh"].compound("SOFT").coefficients[0]
     gentle_fit = fitted.circuits["Gentle"].compound("SOFT").coefficients[0]
 
@@ -225,7 +242,9 @@ def test_a_circuit_with_one_race_takes_the_pooled_value_and_says_so() -> None:
         rows.extend(simulated_race(2023, round_number, "Common", rng=rng))
     rows.extend(simulated_race(2023, 4, "Rare", rng=rng))
 
-    fitted = fit_circuit_pace(add_features(lap_frame(rows), LINEAR), LINEAR)
+    fitted = fit_circuit_pace(
+        clean_laps(add_features(lap_frame(rows), LINEAR), LINEAR).laps, LINEAR
+    )
     assert fitted.pooled_only == ("Rare",)
     rare = fitted.circuits["Rare"].compound("SOFT").coefficients[0]
     assert rare.shrinkage == 0.0

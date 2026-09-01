@@ -6,6 +6,11 @@ the car ahead depends on laps the exclusion rules will remove; the rules run aft
 featured frame. Doing it the other way round would measure each car's gap to the nearest car
 whose lap happened to survive, which is not a gap anybody drove.
 
+Not every model wants the same laps. The pace model needs green-flag laps and nothing else; pit
+loss is measured from the in- and out-laps that filter deletes; safety-car hazard is measured from
+the neutralisations it deletes. So both frames travel together, and each model states which one it
+reads rather than quietly reusing whichever was to hand.
+
 The season filter is the mechanism behind ADR-0002's temporal split. Calibration calls
 :func:`training_laps`, which cannot reach the holdout seasons; validation in P2 will call
 :func:`holdout_laps`, which cannot reach the training ones.
@@ -35,6 +40,12 @@ class CalibrationData:
     """
 
     laps: pl.DataFrame
+    """Laps that survived the green-flag pace filter."""
+
+    all_laps: pl.DataFrame
+    """Every lap of the same races, featured but unfiltered. Pit loss and safety-car hazard are
+    estimated from precisely the events :attr:`laps` removes, so they read this instead."""
+
     diagnostics: pl.DataFrame
     seasons: tuple[int, ...]
 
@@ -55,9 +66,14 @@ def prepare_laps(
 ) -> CalibrationData:
     """Load, feature and clean the laps for the given seasons."""
     settings = settings or get_settings()
-    raw = load_laps(settings, seasons=seasons, dry_only=dry_only)
-    report = clean_laps(add_features(raw, settings), settings)
-    return CalibrationData(laps=report.laps, diagnostics=report.diagnostics, seasons=tuple(seasons))
+    featured = add_features(load_laps(settings, seasons=seasons, dry_only=dry_only), settings)
+    report = clean_laps(featured, settings)
+    return CalibrationData(
+        laps=report.laps,
+        all_laps=featured,
+        diagnostics=report.diagnostics,
+        seasons=tuple(seasons),
+    )
 
 
 def training_laps(settings: AppSettings | None = None) -> CalibrationData:

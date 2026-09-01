@@ -6,7 +6,7 @@
 UV ?= uv
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint format types test check clean ingest ingest-all laps
+.PHONY: help setup lint format types test check clean ingest ingest-all laps calibrate
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -43,6 +43,9 @@ ingest-all: ## Download every race of every configured season -- slow, and hits 
 
 laps: ## Report what the exclusion rules keep, and what they cost
 	$(UV) run --extra data apex laps
+
+calibrate: ## Fit every simulator parameter and write params/ and the calibration report
+	$(UV) run --extra data --extra fit apex calibrate
 
 clean: ## Remove caches and build artefacts, but never downloaded race data
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .hypothesis htmlcov .coverage

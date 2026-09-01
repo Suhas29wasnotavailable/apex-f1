@@ -29,6 +29,8 @@ calibration:
   dry_compounds: ["SOFT", "MEDIUM", "HARD"]
   dirty_air_saturation_s: 2.0
   degradation_degree: 2
+  full_safety_car_status: ["4"]
+  virtual_safety_car_status: ["6", "7"]
   min_races_per_circuit: 2
   min_laps_per_cell: 40
   confidence_level: 0.95

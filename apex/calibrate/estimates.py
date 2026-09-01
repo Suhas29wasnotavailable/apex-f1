@@ -3,8 +3,13 @@
 ADR-0002 commits to publishing no parameter without an uncertainty estimate. That commitment is
 enforced by making :class:`Estimate` the only way a number leaves the calibration layer: it
 carries the value, its standard error, an interval at the project's single configured coverage,
-and the number of observations behind it. A point estimate with no interval cannot be
-constructed, so it cannot be published by accident.
+and the number of observations behind it.
+
+An estimate whose uncertainty genuinely cannot be measured -- one observation, or one cluster --
+says so with ``None`` rather than with an infinite interval. Infinity is not representable in
+JSON, so a file containing one would not survive the round trip to the simulator, and "unknown"
+is in any case the honest description of a spread that was never estimable. Downstream code has
+to handle that case, which is the point: it cannot mistake an unmeasured spread for a narrow one.
 """
 
 from __future__ import annotations
@@ -40,8 +45,12 @@ class Estimate(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     value: float
-    std_error: float = Field(ge=0.0)
-    interval: tuple[float, float]
+    std_error: float | None = Field(default=None, ge=0.0)
+    """``None`` when the spread could not be estimated at all."""
+
+    interval: tuple[float, float] | None = None
+    """``None`` when there were too few independent observations to support one."""
+
     level: float = Field(gt=0.5, lt=1.0)
     n_obs: int = Field(ge=0)
     """Observations the estimate rests on. For a shrunk circuit estimate, the laps in that
@@ -62,13 +71,22 @@ class Estimate(BaseModel):
         degrees_of_freedom: float | None = None,
         shrinkage: float | None = None,
     ) -> Estimate:
-        """Build an estimate, deriving the interval from the standard error."""
+        """Build an estimate, deriving the interval from the standard error.
+
+        With fewer than two independent observations there is no interval to derive, and the
+        estimate is returned saying so rather than claiming one of infinite width.
+        """
         dof = float(n_obs - 1) if degrees_of_freedom is None else degrees_of_freedom
-        half_width = critical_value(dof, level) * std_error
+        multiplier = critical_value(dof, level)
+        interval = (
+            None
+            if math.isinf(multiplier)
+            else (value - multiplier * std_error, value + multiplier * std_error)
+        )
         return cls(
             value=value,
             std_error=std_error,
-            interval=(value - half_width, value + half_width),
+            interval=interval,
             level=level,
             n_obs=n_obs,
             shrinkage=shrinkage,
@@ -76,10 +94,20 @@ class Estimate(BaseModel):
 
     @property
     def excludes_zero(self) -> bool:
-        """Whether the interval separates the effect from nothing at all."""
+        """Whether the interval separates the effect from nothing at all.
+
+        False when there is no interval: an unmeasured spread is not evidence of an effect.
+        """
+        if self.interval is None:
+            return False
         low, high = self.interval
         return low > 0.0 or high < 0.0
 
     def __str__(self) -> str:
-        low, high = self.interval
-        return f"{self.value:+.4f} ± {self.std_error:.4f} [{low:+.4f}, {high:+.4f}] n={self.n_obs}"
+        spread = "±   ?" if self.std_error is None else f"± {self.std_error:.4f}"
+        bounds = (
+            "[unmeasurable]"
+            if self.interval is None
+            else f"[{self.interval[0]:+.4f}, {self.interval[1]:+.4f}]"
+        )
+        return f"{self.value:+.4f} {spread} {bounds} n={self.n_obs}"

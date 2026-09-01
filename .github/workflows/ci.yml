@@ -24,8 +24,11 @@ jobs:
           cache-dependency-glob: uv.lock
 
       # --locked fails if uv.lock is stale, so a dependency change cannot land unlocked.
+      # The `fit` extra is installed because the calibration tests check the project's own
+      # fixed-effects estimator against statsmodels. That comparison is the reason to believe
+      # any fitted number, so it belongs in CI rather than on one developer's machine.
       - name: Install dependencies
-        run: uv sync --group dev --locked
+        run: uv sync --extra fit --group dev --locked
 
       - name: Lint
         run: uv run ruff check --output-format=github .

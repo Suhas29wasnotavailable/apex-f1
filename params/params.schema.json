@@ -1,0 +1,534 @@
+{
+  "$defs": {
+    "CompoundDegradation": {
+      "additionalProperties": false,
+      "description": "How much lap time one compound loses as its tyres age, at one circuit or pooled.",
+      "properties": {
+        "compound": {
+          "title": "Compound",
+          "type": "string"
+        },
+        "circuit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Circuit"
+        },
+        "coefficients": {
+          "items": {
+            "$ref": "#/$defs/Estimate"
+          },
+          "minItems": 1,
+          "title": "Coefficients",
+          "type": "array"
+        },
+        "offset_s": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Estimate"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "compound",
+        "coefficients"
+      ],
+      "title": "CompoundDegradation",
+      "type": "object"
+    },
+    "Estimate": {
+      "additionalProperties": false,
+      "description": "One fitted quantity, with its uncertainty and provenance.",
+      "properties": {
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "std_error": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Std Error"
+        },
+        "interval": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interval"
+        },
+        "level": {
+          "exclusiveMaximum": 1.0,
+          "exclusiveMinimum": 0.5,
+          "title": "Level",
+          "type": "number"
+        },
+        "n_obs": {
+          "minimum": 0,
+          "title": "N Obs",
+          "type": "integer"
+        },
+        "shrinkage": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shrinkage"
+        }
+      },
+      "required": [
+        "value",
+        "level",
+        "n_obs"
+      ],
+      "title": "Estimate",
+      "type": "object"
+    },
+    "ExclusionCount": {
+      "additionalProperties": false,
+      "description": "One row of the exclusion audit: what a rule removed and what survived it.",
+      "properties": {
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        },
+        "removed": {
+          "minimum": 0,
+          "title": "Removed",
+          "type": "integer"
+        },
+        "remaining": {
+          "minimum": 0,
+          "title": "Remaining",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rule",
+        "removed",
+        "remaining"
+      ],
+      "title": "ExclusionCount",
+      "type": "object"
+    },
+    "Neutralisation": {
+      "additionalProperties": false,
+      "description": "The chance a neutralisation begins on any given green lap, at one circuit or pooled.",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "circuit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Circuit"
+        },
+        "per_lap_probability": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "n_deployments": {
+          "minimum": 0,
+          "title": "N Deployments",
+          "type": "integer"
+        },
+        "laps_at_risk": {
+          "minimum": 0,
+          "title": "Laps At Risk",
+          "type": "integer"
+        },
+        "n_races": {
+          "minimum": 0,
+          "title": "N Races",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "per_lap_probability",
+        "n_deployments",
+        "laps_at_risk",
+        "n_races"
+      ],
+      "title": "Neutralisation",
+      "type": "object"
+    },
+    "NeutralisationModel": {
+      "additionalProperties": false,
+      "description": "One kind of neutralisation, everywhere it could be measured.",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "pooled": {
+          "$ref": "#/$defs/Neutralisation"
+        },
+        "circuits": {
+          "items": {
+            "$ref": "#/$defs/Neutralisation"
+          },
+          "title": "Circuits",
+          "type": "array"
+        },
+        "duration_laps": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Estimate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "races_with_any": {
+          "minimum": 0,
+          "title": "Races With Any",
+          "type": "integer"
+        },
+        "n_races": {
+          "minimum": 0,
+          "title": "N Races",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "pooled",
+        "circuits",
+        "duration_laps",
+        "races_with_any",
+        "n_races"
+      ],
+      "title": "NeutralisationModel",
+      "type": "object"
+    },
+    "PaceModel": {
+      "additionalProperties": false,
+      "description": "A fitted pace model and the evidence behind it.",
+      "properties": {
+        "circuit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Circuit"
+        },
+        "degradation": {
+          "items": {
+            "$ref": "#/$defs/CompoundDegradation"
+          },
+          "title": "Degradation",
+          "type": "array"
+        },
+        "reference_compound": {
+          "title": "Reference Compound",
+          "type": "string"
+        },
+        "fuel_effect_s": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "dirty_air_s": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "dirty_air_saturation_s": {
+          "title": "Dirty Air Saturation S",
+          "type": "number"
+        },
+        "residual_std_s": {
+          "title": "Residual Std S",
+          "type": "number"
+        },
+        "r_squared_within": {
+          "title": "R Squared Within",
+          "type": "number"
+        },
+        "n_laps": {
+          "title": "N Laps",
+          "type": "integer"
+        },
+        "n_races": {
+          "title": "N Races",
+          "type": "integer"
+        },
+        "n_cars": {
+          "title": "N Cars",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "degradation",
+        "reference_compound",
+        "fuel_effect_s",
+        "dirty_air_s",
+        "dirty_air_saturation_s",
+        "residual_std_s",
+        "r_squared_within",
+        "n_laps",
+        "n_races",
+        "n_cars"
+      ],
+      "title": "PaceModel",
+      "type": "object"
+    },
+    "PitLoss": {
+      "additionalProperties": false,
+      "description": "Time lost to one green-flag pit stop at one circuit, or pooled across all of them.",
+      "properties": {
+        "circuit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Circuit"
+        },
+        "seconds": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "n_stops": {
+          "minimum": 0,
+          "title": "N Stops",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seconds",
+        "n_stops"
+      ],
+      "title": "PitLoss",
+      "type": "object"
+    },
+    "PitLossModel": {
+      "additionalProperties": false,
+      "description": "Pit loss everywhere it could be measured.",
+      "properties": {
+        "pooled": {
+          "$ref": "#/$defs/PitLoss"
+        },
+        "circuits": {
+          "items": {
+            "$ref": "#/$defs/PitLoss"
+          },
+          "title": "Circuits",
+          "type": "array"
+        },
+        "n_stops": {
+          "title": "N Stops",
+          "type": "integer"
+        },
+        "n_races": {
+          "title": "N Races",
+          "type": "integer"
+        },
+        "excluded_under_safety_car": {
+          "title": "Excluded Under Safety Car",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pooled",
+        "circuits",
+        "n_stops",
+        "n_races",
+        "excluded_under_safety_car"
+      ],
+      "title": "PitLossModel",
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "description": "Where a parameter file came from, in enough detail to reproduce or refute it.",
+      "properties": {
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "apex_version": {
+          "title": "Apex Version",
+          "type": "string"
+        },
+        "config_hash": {
+          "title": "Config Hash",
+          "type": "string"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "schema_version": {
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "seasons": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Seasons",
+          "type": "array"
+        },
+        "holdout_seasons": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Holdout Seasons",
+          "type": "array"
+        },
+        "n_races": {
+          "title": "N Races",
+          "type": "integer"
+        },
+        "n_circuits": {
+          "title": "N Circuits",
+          "type": "integer"
+        },
+        "n_laps_available": {
+          "title": "N Laps Available",
+          "type": "integer"
+        },
+        "n_laps_used": {
+          "title": "N Laps Used",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "generated_at",
+        "apex_version",
+        "config_hash",
+        "seed",
+        "seasons",
+        "holdout_seasons",
+        "n_races",
+        "n_circuits",
+        "n_laps_available",
+        "n_laps_used"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "SafetyCarModel": {
+      "additionalProperties": false,
+      "description": "Both kinds of neutralisation.",
+      "properties": {
+        "safety_car": {
+          "$ref": "#/$defs/NeutralisationModel"
+        },
+        "virtual_safety_car": {
+          "$ref": "#/$defs/NeutralisationModel"
+        }
+      },
+      "required": [
+        "safety_car",
+        "virtual_safety_car"
+      ],
+      "title": "SafetyCarModel",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Every fitted parameter, with its provenance and the filtering that produced it.",
+  "properties": {
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "exclusions": {
+      "items": {
+        "$ref": "#/$defs/ExclusionCount"
+      },
+      "title": "Exclusions",
+      "type": "array"
+    },
+    "pace": {
+      "$ref": "#/$defs/PaceModel"
+    },
+    "circuit_pace": {
+      "items": {
+        "$ref": "#/$defs/PaceModel"
+      },
+      "title": "Circuit Pace",
+      "type": "array"
+    },
+    "between_circuit_std": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Between Circuit Std",
+      "type": "object"
+    },
+    "pit_loss": {
+      "$ref": "#/$defs/PitLossModel"
+    },
+    "safety_car": {
+      "$ref": "#/$defs/SafetyCarModel"
+    }
+  },
+  "required": [
+    "provenance",
+    "exclusions",
+    "pace",
+    "circuit_pace",
+    "between_circuit_std",
+    "pit_loss",
+    "safety_car"
+  ],
+  "title": "ParameterSet",
+  "type": "object"
+}

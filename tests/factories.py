@@ -76,7 +76,9 @@ def lap_frame(rows: Sequence[Row]) -> pl.DataFrame:
     """Canonical lap table from row dictionaries; correctly typed and empty for no rows."""
     if not rows:
         return pl.DataFrame(schema=LAP_SCHEMA)
-    return conform_lap_frame(pl.DataFrame([dict(row) for row in rows]))
+    # Scan every row before settling on a type. Columns like ``pit_in_s`` are null for the first
+    # few hundred laps of a race and then suddenly are not, which the default sample would miss.
+    return conform_lap_frame(pl.DataFrame([dict(row) for row in rows], infer_schema_length=None))
 
 
 RAW_LAP: dict[str, Any] = {

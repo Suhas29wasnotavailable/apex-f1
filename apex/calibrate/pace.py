@@ -395,7 +395,7 @@ def fit_circuit_pace(laps: pl.DataFrame, settings: AppSettings | None = None) ->
             # pooled value and there is no between-circuit spread to report.
             between_std[name] = 0.0
             continue
-        pooling = partial_pool(observed, level=level)
+        pooling = partial_pool(observed, level=level, toward=global_coefficients[name])
         between_std[name] = pooling.between_std
         for circuit, estimate in pooling.estimates.items():
             shrunk.setdefault(circuit, {})[name] = estimate

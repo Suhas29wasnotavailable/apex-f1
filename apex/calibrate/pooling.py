@@ -52,6 +52,8 @@ def effective_standard_error(estimate: Estimate) -> float:
     the standard error itself; for one resting on two, it is several times larger, because that
     is what the interval actually says. Infinite when the estimate has no usable interval.
     """
+    if estimate.interval is None:
+        return math.inf
     low, high = estimate.interval
     if not math.isfinite(low) or not math.isfinite(high):
         return math.inf
@@ -75,12 +77,22 @@ class PartialPooling:
     estimates: dict[str, Estimate]
 
 
-def partial_pool(observations: Mapping[str, Estimate], *, level: float) -> PartialPooling:
-    """Shrink per-group estimates toward their precision-weighted common mean.
+def partial_pool(
+    observations: Mapping[str, Estimate], *, level: float, toward: Estimate | None = None
+) -> PartialPooling:
+    """Shrink per-group estimates toward a common mean.
 
     Args:
         observations: Independent per-group estimates, keyed by group.
         level: Coverage for the returned intervals.
+        toward: The mean to shrink to. By default it is estimated from the group estimates
+            themselves, which is standard. Supply it when the same quantity is better estimated
+            from all the data at once -- a safety-car rate is the clearest case, because each
+            group's small-sample adjustment would otherwise be counted once per group and inflate
+            the average of twenty sparse circuits well above the rate the whole calendar shows.
+            Passing the all-data fit also guarantees that a circuit which contributed nothing
+            reports exactly the number the pooled model reports, rather than a second, slightly
+            different pooled number.
 
     Raises:
         ValueError: if there is nothing to pool.
@@ -97,7 +109,7 @@ def partial_pool(observations: Mapping[str, Estimate], *, level: float) -> Parti
     if not np.isfinite(variances).any():
         raise ValueError("no group has a usable interval, so there is nothing to pool")
 
-    if len(keys) == 1:
+    if len(keys) == 1 and toward is None:
         # One group cannot inform a between-group spread, so there is nothing to shrink toward
         # and the estimate is returned as it came in.
         only = observations[keys[0]]
@@ -107,11 +119,15 @@ def partial_pool(observations: Mapping[str, Estimate], *, level: float) -> Parti
             estimates={keys[0]: only.model_copy(update={"shrinkage": 1.0})},
         )
 
-    between_variance = _between_variance(values, variances)
+    between_variance = _between_variance(values, variances, target=toward.value if toward else None)
 
-    weights = 1.0 / (variances + between_variance)
-    pooled_mean = float(values @ weights / weights.sum())
-    pooled_variance = float(1.0 / weights.sum())
+    if toward is None:
+        weights = 1.0 / (variances + between_variance)
+        pooled_mean = float(values @ weights / weights.sum())
+        pooled_variance = float(1.0 / weights.sum())
+    else:
+        pooled_mean = toward.value
+        pooled_variance = effective_standard_error(toward) ** 2
 
     shrinkage = between_variance / (between_variance + variances)
     shrunk_values = shrinkage * values + (1.0 - shrinkage) * pooled_mean
@@ -124,7 +140,8 @@ def partial_pool(observations: Mapping[str, Estimate], *, level: float) -> Parti
     shrunk_variances = own_variance + (1.0 - shrinkage) ** 2 * pooled_variance
 
     return PartialPooling(
-        mean=Estimate.from_standard_error(
+        mean=toward
+        or Estimate.from_standard_error(
             pooled_mean,
             float(np.sqrt(pooled_variance)),
             n_obs=sum(counts),
@@ -146,19 +163,31 @@ def partial_pool(observations: Mapping[str, Estimate], *, level: float) -> Parti
     )
 
 
-def _between_variance(values: np.ndarray, variances: np.ndarray) -> float:
+def _between_variance(
+    values: np.ndarray, variances: np.ndarray, *, target: float | None = None
+) -> float:
     """DerSimonian-Laird moment estimator of the between-group variance.
 
     Returns zero when the observed disagreement between groups is no larger than their own
     standard errors already account for, which is the honest reading of that evidence: there is
     no detectable circuit effect, so every circuit takes the pooled value.
+
+    The expected dispersion under no group effect is one per group when the mean is supplied and
+    one per group less one when it has to be estimated from the same data, which is the usual
+    cost of estimating a mean before measuring spread around it.
     """
     precisions = 1.0 / variances
     if precisions.sum() <= 0.0:
         return 0.0
-    fixed_effect_mean = float(values @ precisions / precisions.sum())
-    dispersion = float(precisions @ (values - fixed_effect_mean) ** 2)
-    scale = float(precisions.sum() - (precisions**2).sum() / precisions.sum())
+    if target is None:
+        centre = float(values @ precisions / precisions.sum())
+        expected_dispersion = float(values.size - 1)
+        scale = float(precisions.sum() - (precisions**2).sum() / precisions.sum())
+    else:
+        centre = target
+        expected_dispersion = float(values.size)
+        scale = float(precisions.sum())
+    dispersion = float(precisions @ (values - centre) ** 2)
     if scale <= 0.0:
         return 0.0
-    return max(0.0, (dispersion - (values.size - 1)) / scale)
+    return max(0.0, (dispersion - expected_dispersion) / scale)

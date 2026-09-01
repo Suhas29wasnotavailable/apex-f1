@@ -12,7 +12,10 @@ import polars as pl
 import typer
 
 from apex import __version__
+from apex.calibrate.dataset import training_laps
 from apex.calibrate.exclusions import clean_laps
+from apex.calibrate.params import ParameterSet, calibrate, params_path, schema_path, write_schema
+from apex.calibrate.report import render_report
 from apex.config import AppSettings, get_settings
 from apex.data import SessionRecord, ingest_seasons, load_laps, manifest_frame
 from apex.data.sources import RateLimitError
@@ -146,6 +149,49 @@ def laps(
             .sort("compound")
         )
     )
+
+
+@app.command(name="calibrate")
+def calibrate_command(
+    report: bool = typer.Option(True, help="Also write the human-readable calibration report."),
+) -> None:
+    """Fit every simulator parameter from the training seasons and write `params/params.json`.
+
+    The training seasons are the only source. A number in that file that came from a holdout race
+    would invalidate every metric this project publishes, so the split is enforced here, by the
+    loader, rather than trusted downstream.
+    """
+    settings = get_settings()
+    data = training_laps(settings)
+    typer.echo(
+        f"Fitting from {data.n_races} dry races at {data.n_circuits} circuits, "
+        f"seasons {list(settings.data.train_seasons)}."
+    )
+
+    params = calibrate(settings, data)
+    destination = params_path(settings)
+    params.write(destination)
+    write_schema(settings)
+
+    typer.echo(_table(params.diagnostics_frame()))
+    typer.echo(f"\nWrote {destination} and {schema_path(settings)}")
+
+    if report:
+        report_path = settings.paths.figures.parent / "calibration_report.md"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(render_report(params), encoding="utf-8")
+        typer.echo(f"Wrote {report_path}")
+
+
+@app.command()
+def params() -> None:
+    """Summarise the fitted parameters currently on disk."""
+    settings = get_settings()
+    path = params_path(settings)
+    if not path.is_file():
+        typer.echo("No parameters fitted yet. Run `apex calibrate`.")
+        raise typer.Exit(code=1)
+    typer.echo(render_report(ParameterSet.read(path)))
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -178,6 +178,14 @@ class CalibrationSettings(_Frozen):
     degradation_degree: Literal[1, 2] = 2
     """Polynomial degree in tyre age; degree 2 allows a degradation cliff."""
 
+    full_safety_car_status: tuple[str, ...] = ("4",)
+    """Track status code for a deployed safety car."""
+
+    virtual_safety_car_status: tuple[str, ...] = ("6", "7")
+    """Track status codes for a virtual safety car, deployed and ending. Kept apart from the full
+    safety car because the two are strategically opposite: a full safety car bunches the field and
+    makes a stop nearly free, a virtual one does neither."""
+
     min_races_per_circuit: int = Field(default=2, ge=1)
     """Circuits below this are still fitted, but shrink hard toward the pooled compound mean."""
 
