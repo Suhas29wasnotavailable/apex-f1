@@ -36,6 +36,7 @@ calibration:
     drop_opening_laps: 1
     excluded_track_status: ["2", "4", "5", "6", "7"]
     drop_lap_after_safety_car: true
+    safety_car_track_status: ["4", "6", "7"]
     drop_deleted: true
     drop_fastf1_generated: true
     max_lap_time_ratio: 1.10

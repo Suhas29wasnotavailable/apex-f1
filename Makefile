@@ -6,7 +6,7 @@
 UV ?= uv
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint format types test check clean
+.PHONY: help setup lint format types test check clean ingest ingest-all laps
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -34,6 +34,15 @@ test: ## Run the test suite, excluding anything that needs the network
 	$(UV) run pytest -m "not network"
 
 check: lint types test ## Everything CI runs
+
+ingest: ## Download the pilot races (Bahrain and Monaco, all configured seasons)
+	$(UV) run --extra data apex ingest --pilot
+
+ingest-all: ## Download every race of every configured season -- slow, and hits the timing API
+	$(UV) run --extra data apex ingest
+
+laps: ## Report what the exclusion rules keep, and what they cost
+	$(UV) run --extra data apex laps
 
 clean: ## Remove caches and build artefacts, but never downloaded race data
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .hypothesis htmlcov .coverage

@@ -90,6 +90,22 @@ class DataSettings(_Frozen):
     def all_seasons(self) -> tuple[int, ...]:
         return tuple(sorted({*self.train_seasons, *self.holdout_seasons}))
 
+    def ingestion_fingerprint(self) -> str:
+        """Hash of the settings that change what an ingested file contains.
+
+        Deliberately narrow. Which seasons are trained on is a query over stored races, not a
+        property of any stored race, so moving the split must not invalidate a single download.
+        The dry-race rule is different: it is evaluated at ingestion and written into the
+        sidecar, so changing it has to force those races to be reclassified.
+        """
+        payload = json.dumps(
+            self.model_dump(
+                mode="json", include={"session", "max_rainfall_fraction", "wet_compounds"}
+            ),
+            sort_keys=True,
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
     @model_validator(mode="after")
     def _check_split(self) -> DataSettings:
         if not self.train_seasons:
@@ -129,6 +145,11 @@ class ExclusionSettings(_Frozen):
 
     drop_lap_after_safety_car: bool = True
     """The first green lap after a safety car period is a known source of timing artefacts."""
+
+    safety_car_track_status: tuple[str, ...] = ("4", "6", "7")
+    """Status codes that count as a safety car period for the rule above: safety car, virtual
+    safety car deployed, virtual safety car ending. A subset of ``excluded_track_status``, named
+    separately because the following lap is dropped for a different reason than the lap itself."""
 
     drop_deleted: bool = True
     """Drop laps deleted by the stewards, e.g. for track limits."""
