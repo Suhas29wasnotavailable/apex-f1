@@ -13,10 +13,11 @@ into it.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-__all__ = ["TEMPLATE_PATH", "render_page", "write_page"]
+__all__ = ["TEMPLATE_PATH", "render_page", "season_payload", "write_page"]
 
 TEMPLATE_PATH = Path(__file__).parent / "templates" / "replay.html"
 
@@ -34,6 +35,24 @@ def _escape_for_script(payload: str) -> str:
     return payload.replace("</", "<\\/")
 
 
+def season_payload(races: Sequence[dict[str, Any]], *, title: str = "") -> dict[str, Any]:
+    """Bundle several simulated races into one page.
+
+    One page holding a calendar is worth more than a folder of pages holding one race each: the
+    interesting question is how differently the same twenty cars race at Monaco and at Monza, and
+    that only reads when you can switch between them without losing your place.
+
+    Raises:
+        ValueError: if there are no races to show.
+    """
+    if not races:
+        raise ValueError("a replay needs at least one race")
+    return {
+        "title": title or "APEX race replays",
+        "races": list(races),
+    }
+
+
 def render_page(payload: dict[str, Any]) -> str:
     """Render the replay page with a payload embedded.
 
@@ -41,8 +60,12 @@ def render_page(payload: dict[str, Any]) -> str:
         FileNotFoundError: if the template is missing from the installed package.
     """
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
-    encoded = _escape_for_script(json.dumps(payload, separators=(",", ":")))
-    title = str(payload.get("title", "Race replay"))
+    # A single race is wrapped so the page only ever has one shape to read.
+    bundle = (
+        payload if "races" in payload else season_payload([payload], title=payload.get("title", ""))
+    )
+    encoded = _escape_for_script(json.dumps(bundle, separators=(",", ":")))
+    title = str(bundle.get("title", "Race replay"))
     return template.replace(_PAYLOAD_TOKEN, encoded).replace(_TITLE_TOKEN, title)
 
 

@@ -21,19 +21,33 @@ reinforcement learning loses.**
 ## Watch a race
 
 ```bash
-make replay                                   # simulate a race and open the replay
-uv run apex replay --circuit Monaco --laps 78 # any circuit, any grid
+make tracks    # trace all 25 circuits from real telemetry (once, ~300 KB)
+make replay    # simulate the whole calendar and open it
 ```
 
 That writes one self-contained HTML file and opens it. No server, no build step, works offline.
-You get a top-down view of the field on the circuit's **real outline**, a live timing tower, the
-safety car turning the track yellow and bunching the pack, tyre compounds and ages, pit stops, and a
-scrubbable timeline with the neutralisations marked.
+**All 25 fitted circuits** are in it behind a picker, so you can watch the same twenty cars race at
+Monaco and then at Monza and see the difference the fitted parameters make.
 
-Two things in it are real measurements rather than drawings. The **track outline** is traced from
-FastF1 position telemetry, so Monaco has its hairpin and Silverstone has Maggotts–Becketts. And cars
-move around it on a **real speed profile** taken from a fast lap, so they slow for the corners
-instead of sliding round at a constant rate.
+Three panels:
+
+| Panel | What it shows |
+|---|---|
+| **Order** | Live timing tower — position, last lap, gap, tyre compound and age. Purple marks whoever holds the fastest lap, and it changes hands. |
+| **Strategy** | Every car's race as proportional stints, so you can read the whole field's tyre plan at a glance. |
+| **Conditions** | Air and track temperature traces, speed trap by team, and the compounds actually run — all **recorded, never simulated**. |
+
+Two things in the view are real measurements rather than drawings. The **track outline** is traced
+from FastF1 position telemetry, so Monaco has its hairpin and Silverstone has Maggotts–Becketts. And
+cars move on a **real speed profile** taken from a fast lap, so they slow for the corners instead of
+sliding round at a constant rate.
+
+**About that Conditions panel.** This project is calibrated on dry races only, so there is no
+weather model, no track-temperature effect and no engine model. The panel shows what the timing feed
+actually recorded at each circuit — Mexico City runs at 46–53 °C of track temperature, Singapore at
+33–35 °C, and the speed trap separates the teams by about 8 km/h — and says plainly that none of it
+feeds the race you are watching. Showing a simulated rain shower would be inventing a number the
+simulator does not have.
 
 Everything else — who is where, on what tyre, how far apart — comes from `params/params.json` and
 nothing else.
@@ -156,13 +170,17 @@ make ingest-all  # download every race of 2022-2025 -- slow, and rate-limited to
 make laps        # report what the exclusion rules keep, and what they cost
 make calibrate   # fit every parameter, write params/ and the calibration report
 make race        # simulate one race from a grid and print the result
-make replay      # simulate a race and open a watchable top-down replay
+make tracks      # trace every circuit's outline from real telemetry, once
+make replay      # simulate the calendar and open a watchable top-down replay
 make validate    # measure the simulator against the held-out races and print the error
 ```
 
 ```bash
-# Any circuit the baseline was fitted at, any grid you like.
-uv run apex race --circuit Monaco --laps 78 --drivers VER,NOR,LEC,PIA,SAI,RUS,HAM,PER
+# One circuit, your own grid.
+uv run apex replay --circuit Monaco --laps 78 --drivers VER,NOR,LEC,PIA,SAI,RUS,HAM,PER
+
+# Or a few of them in one page.
+uv run apex replay --circuit "Monaco,Monza,Suzuka,Las Vegas"
 ```
 
 `make ingest-all` is safe to interrupt and re-run: races already on disk are skipped before their

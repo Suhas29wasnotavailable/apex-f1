@@ -26,8 +26,13 @@ from apex.eval import validate_holdout
 from apex.sim import RaceSimulator, ReactiveRules, from_grid
 from apex.sim.scenario import AnchorMode
 from apex.viz import load_track, replay_payload, write_page
+from apex.viz.page import season_payload
+from apex.viz.track import track_path
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="APEX -- F1 race digital twin.")
+
+_MIN_RACE_LAPS = 2
+"""Below this there is no race to replay, only a start and a finish."""
 
 
 def _table(frame: pl.DataFrame) -> str:
@@ -261,10 +266,46 @@ def race(
 
 
 @app.command()
+def tracks(
+    *,
+    refresh: bool = typer.Option(False, help="Re-fetch geometry already on disk."),
+) -> None:
+    """Cache track geometry for every fitted circuit.
+
+    Traced from real position telemetry, which is the only part of this project that needs the
+    network after ingestion. Paid once per circuit: about 300 KB for the whole calendar.
+    """
+    settings = get_settings()
+    path = params_path(settings)
+    if not path.is_file():
+        typer.echo("No parameters fitted yet. Run `apex calibrate`.")
+        raise typer.Exit(code=1)
+
+    names = sorted(entry.circuit for entry in ParameterSet.read(path).baseline.circuits)
+    typer.echo(f"Tracing {len(names)} circuits.")
+    built = failed = 0
+    for name in names:
+        if track_path(settings, name).is_file() and not refresh:
+            continue
+        try:
+            geometry = load_track(name, settings=settings, refresh=refresh)
+        except RuntimeError as error:
+            typer.echo(f"  {name:24s} FAILED: {error}")
+            failed += 1
+            continue
+        typer.echo(f"  {name:24s} {geometry.lap_distance_m:>7.0f} m   {geometry.season}")
+        built += 1
+    on_disk = sum(1 for name in names if track_path(settings, name).is_file())
+    typer.echo(f"{built} traced this run, {failed} failed, {on_disk}/{len(names)} on disk.")
+
+
+@app.command()
 def replay(
     *,
-    circuit: str = typer.Option(..., help="Circuit to race at, as the parameter file names it."),
-    laps: int = typer.Option(..., help="Race distance."),
+    circuit: str = typer.Option(
+        "", help="Circuit to race at. Repeat with commas for a page holding several."
+    ),
+    laps: int = typer.Option(0, help="Race distance. Ignored when several circuits are given."),
     season: int = typer.Option(
         2025, help="Season, used to place the pace level on the fitted trend."
     ),
@@ -282,10 +323,10 @@ def replay(
     ),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the page when written."),
 ) -> None:
-    """Simulate a race and write a self-contained HTML replay you can watch.
+    """Simulate one race or a whole calendar, and write a self-contained HTML replay to watch.
 
-    The track outline comes from real position telemetry, fetched once per circuit and cached. The
-    race itself comes from `params/params.json` and nothing else.
+    With no circuit, every circuit that has cached geometry goes into one page with a picker. The
+    track outlines come from real position telemetry; the races come from `params/params.json`.
     """
     settings = get_settings()
     path = params_path(settings)
@@ -295,38 +336,80 @@ def replay(
 
     parameters = ParameterSet.read(path)
     grid = [name.strip().upper() for name in drivers.split(",") if name.strip()]
-    try:
+    simulator = RaceSimulator(parameters, settings)
+
+    wanted = [name.strip() for name in circuit.split(",") if name.strip()]
+    plan = _replay_plan(parameters, settings, wanted, laps)
+    if not plan:
+        known = ", ".join(sorted(entry.circuit for entry in parameters.baseline.circuits))
+        typer.echo(
+            f"No circuit to replay. Run `apex tracks` to cache geometry first."
+            f"\nFitted circuits: {known}"
+        )
+        raise typer.Exit(code=1)
+
+    races = []
+    for name, distance in plan:
         scenario = from_grid(
             parameters,
-            circuit=circuit,
+            circuit=name,
             season=season,
-            total_laps=laps,
+            total_laps=distance,
             grid=grid,
             settings=settings,
         )
-    except KeyError:
-        known = ", ".join(sorted(entry.circuit for entry in parameters.baseline.circuits))
-        typer.echo(f"No baseline fitted for circuit {circuit!r}.\nFitted circuits: {known}")
-        raise typer.Exit(code=1) from None
+        bundle = settings.seeds().derive("race").derive(name).episode(episode)
+        trace = simulator.run(scenario, ReactiveRules(target_stops=stops), bundle)
+        geometry = load_track(name, track_season, settings)
+        races.append(
+            replay_payload(trace, geometry, settings, title=f"{name} {season} · simulated")
+        )
+        typer.echo(f"  {name:24s} {distance:>3d} laps   {trace.winner.driver} wins")
 
-    simulator = RaceSimulator(parameters, settings)
-    bundle = settings.seeds().derive("race").derive(circuit).episode(episode)
-    trace = simulator.run(scenario, ReactiveRules(target_stops=stops), bundle)
+    if len(races) == 1:
+        stem = event_slug(plan[0][0])
+        payload: dict[str, object] = races[0]
+    else:
+        stem = "season"
+        payload = season_payload(races, title=f"APEX · simulated {season} season")
 
-    typer.echo(f"Simulated {laps} laps at {circuit}: {trace.winner.driver} wins.")
-    try:
-        geometry = load_track(circuit, track_season, settings)
-    except RuntimeError as error:
-        typer.echo(f"\nCould not build the track outline: {error}")
-        raise typer.Exit(code=1) from error
-
-    destination = out or (PROJECT_ROOT / "web" / f"replay-{event_slug(circuit)}.html")
-    payload = replay_payload(trace, geometry, settings)
+    destination = out or (PROJECT_ROOT / "web" / f"replay-{stem}.html")
     write_page(payload, destination)
     typer.echo(f"Wrote {destination} ({destination.stat().st_size // 1024} KB)")
 
     if open_browser:
         webbrowser.open(destination.resolve().as_uri())
+
+
+def _replay_plan(
+    parameters: ParameterSet,
+    settings: AppSettings,
+    wanted: list[str],
+    laps: int,
+) -> list[tuple[str, int]]:
+    """Which circuits to race at, and over what distance.
+
+    A distance is only supplied for a single named circuit. For a calendar it is read from the
+    longest race actually run there, which is the distance that circuit's parameters describe.
+    """
+    if wanted and laps > 0 and len(wanted) == 1:
+        return [(wanted[0], laps)]
+
+    frame = load_laps(settings, dry_only=False)
+    distances: dict[str, int] = {}
+    if frame.height:
+        grouped = frame.group_by("circuit").agg(pl.col("lap").max().alias("laps"))
+        distances = {str(row["circuit"]): int(row["laps"]) for row in grouped.iter_rows(named=True)}
+
+    names = wanted or sorted(entry.circuit for entry in parameters.baseline.circuits)
+    plan: list[tuple[str, int]] = []
+    for name in names:
+        if not track_path(settings, name).is_file():
+            continue
+        distance = laps if (laps > 0 and len(names) == 1) else distances.get(name, 0)
+        if distance >= _MIN_RACE_LAPS:
+            plan.append((name, distance))
+    return plan
 
 
 @app.command()

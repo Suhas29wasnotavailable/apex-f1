@@ -424,6 +424,56 @@ simulator behaves like one is to watch it.
 
 ### Next
 
-The rest of P6: a strategy Gantt showing every stint, and the counterfactual fork — pause at any lap,
-change one decision, and watch the race diverge from itself. The fork is the interesting half and the
-simulator already supports it, since a race can be replayed under an imposed flag schedule.
+The counterfactual fork — pause at any lap, change one decision, and watch the race diverge from
+itself. The simulator already supports it, since a race can be replayed under an imposed flag
+schedule.
+
+---
+
+## P6b — The whole calendar, and the circumstances around a race — ✅ complete (2026-09-23)
+
+### Shipped
+
+- **All 25 fitted circuits traced and cached** — `apex tracks`, about 300 KB for the whole calendar,
+  zero failures. One page now holds every circuit behind a picker, so the same twenty cars can be
+  watched racing at Monaco and then at Monza.
+- **Strategy panel** — the Gantt P6 called for. Every car's race as proportional stints, so a whole
+  field's tyre plan reads at a glance.
+- **Conditions panel** — air and track temperature traces, speed trap by team, and the compounds
+  actually run at that circuit. All of it **recorded, none of it simulated**, and the panel says so.
+- Deep links into a moment: `#race=3&panel=strategy&t=0.62`.
+
+### The honesty problem this raised, and how it was settled
+
+The request was for the front end to show changing circumstances — weather, engine, tyres. Two of
+those the simulator does not model at all: ADR-0002 scoped this project to dry races, so there is no
+weather model, no track-temperature effect on pace, and no engine model.
+
+Inventing a rain shower would have put a number on screen that the simulator neither produced nor can
+act on, which is worse than showing nothing. What *is* honest is the real recording: the timing feed
+carries air temperature, track temperature, rainfall and speed-trap figures for every real session.
+Those are shown as **context** under a heading that says "observed, not simulated", with a note
+stating that nothing on the tab changes the race being watched.
+
+It turns out to be more interesting than a fabricated weather system would have been. Mexico City
+runs at 46–53 °C of track temperature against Singapore's 33–35 °C; the speed trap separates the
+fastest team from the slowest by about 8 km/h, which is the closest thing to an engine reading this
+data holds. And the panel makes the project's own scope visible rather than hiding it.
+
+### What broke
+
+- **A circuit's most recent race is not always the right one to describe it by.** Silverstone in
+  2025 spent six hundred laps on intermediates. Quoting that race's conditions beside a dry
+  simulation would have implied the simulator did something with the rain. Conditions now come from
+  the most recent *dry* running, and the panel reports which season it read.
+- **A megabyte of `false`.** Every lap carried three boolean flags that are almost never set; across
+  a twenty-five circuit calendar that was a megabyte of padding no reader ever looks at. Flags are
+  now written only when true, since a missing key reads as false anyway. 4.2 MB to 3.1 MB.
+
+### Still assumed (not yet evidence)
+
+- **Conditions are per circuit, not per simulated race.** The series is read from one real session
+  and resampled across the simulated distance. It describes the circuit, not the race on screen —
+  which is exactly what it claims to do, and no more.
+- **The speed trap is a measurement, not a parameter.** The simulator knows a car's pace as one
+  number per car-race and has no notion of where on the lap that pace comes from.

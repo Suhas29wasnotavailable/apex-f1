@@ -27,6 +27,7 @@ import polars as pl
 from apex.config import AppSettings, get_settings
 from apex.data import load_laps
 from apex.sim.trace import RaceTrace
+from apex.viz.conditions import circuit_conditions
 from apex.viz.track import TrackGeometry, track_payload
 
 __all__ = ["COMPOUND_COLOURS", "TEAM_COLOURS", "replay_payload"]
@@ -106,23 +107,57 @@ def _lap_entries(records: list[Any]) -> list[dict[str, Any]]:
     previous = round(records[0].elapsed_s - records[0].lap_time_s, 3) if records else 0.0
     for record in records:
         end = round(record.elapsed_s, 3)
-        entries.append(
-            {
-                "lap": record.lap,
-                "end": end,
-                "time": round(end - previous, 3),
-                "pos": record.position,
-                "compound": record.compound,
-                "age": record.tyre_age,
-                "gapAhead": round(record.gap_ahead_s, 3),
-                "gapLeader": round(record.gap_to_leader_s, 3),
-                "pit": record.is_pit_lap,
-                "held": record.held_up,
-                "passed": record.overtook,
-            }
-        )
+        entry: dict[str, Any] = {
+            "lap": record.lap,
+            "end": end,
+            "time": round(end - previous, 3),
+            "compound": record.compound,
+            "age": record.tyre_age,
+            "gapLeader": round(record.gap_to_leader_s, 3),
+        }
+        # Flags only when set. Over a twenty-five circuit calendar that is a megabyte of `false`
+        # that no reader of this payload ever looks at, and a missing key reads as false anyway.
+        if record.is_pit_lap:
+            entry["pit"] = True
+        if record.held_up:
+            entry["held"] = True
+        if record.overtook:
+            entry["passed"] = True
+        entries.append(entry)
         previous = end
     return entries
+
+
+def _stints(records: list[Any], total_laps: int) -> list[dict[str, Any]]:
+    """One car's run through the race as a sequence of stints.
+
+    This is the strategy in the form a pit wall actually thinks about it: not "what tyre is on the
+    car now" but "how long has each set lasted and what is left to do". Boundaries are read from the
+    stint number the simulator already tracks rather than re-derived from compound changes, so a car
+    that fits the same compound twice still shows two stints.
+    """
+    if not records:
+        return []
+    out: list[dict[str, Any]] = []
+    for record in records:
+        if out and out[-1]["stint"] == record.stint:
+            out[-1]["lastLap"] = record.lap
+            out[-1]["laps"] += 1
+            out[-1]["endAge"] = record.tyre_age
+            continue
+        out.append(
+            {
+                "stint": record.stint,
+                "compound": record.compound,
+                "firstLap": record.lap,
+                "lastLap": record.lap,
+                "laps": 1,
+                "endAge": record.tyre_age,
+            }
+        )
+    for entry in out:
+        entry["share"] = round(entry["laps"] / max(total_laps, 1), 4)
+    return out
 
 
 def _colour_for(team: str, slot: int) -> str:
@@ -176,8 +211,11 @@ def replay_payload(
                 "lapsHeldUp": result.laps_held_up,
                 "paceS": round(entrant.pace_s, 3),
                 "laps": laps,
+                "stints": _stints(records, scenario.total_laps),
             }
         )
+
+    conditions = circuit_conditions(scenario.circuit, settings=settings)
 
     flags = {str(lap): "sc" for lap in trace.safety_car_laps}
     flags.update({str(lap): "vsc" for lap in trace.virtual_safety_car_laps})
@@ -196,4 +234,24 @@ def replay_payload(
         "flags": flags,
         "compoundColours": COMPOUND_COLOURS,
         "cars": cars,
+        # Observed, never simulated. The page labels it as such; see `apex.viz.conditions`.
+        "conditions": None
+        if conditions is None
+        else {
+            "season": conditions.season,
+            "event": conditions.event,
+            "airTempC": list(conditions.air_temp_c),
+            "trackTempC": list(conditions.track_temp_c),
+            "rainfallFraction": conditions.rainfall_fraction,
+            "wasDry": conditions.was_dry,
+            "compounds": [list(entry) for entry in conditions.compounds],
+            "teams": [
+                {
+                    "team": team.team,
+                    "speedTrapKph": team.speed_trap_kph,
+                    "drivers": list(team.drivers),
+                }
+                for team in conditions.teams
+            ],
+        },
     }

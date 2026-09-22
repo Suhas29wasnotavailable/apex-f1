@@ -137,6 +137,71 @@
   .ticks .band.vsc { background: #8a7418; }
   .ticks .done { position: absolute; top: 0; bottom: 0; left: 0; background: #33405a; }
 
+  .picker {
+    display: inline-flex; align-items: center; gap: 8px;
+    font: 600 10px/1 var(--mono); letter-spacing: .12em; color: var(--ink-faint);
+  }
+  .picker select {
+    background: var(--panel-2); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 7px; padding: 6px 9px; font: 600 12px/1 var(--cond);
+    letter-spacing: .06em; cursor: pointer; max-width: 190px;
+  }
+
+  .tabs { display: flex; border-bottom: 1px solid var(--line); flex: none; }
+  .tab {
+    flex: 1; background: none; border: none; border-radius: 0; color: var(--ink-faint);
+    padding: 10px 4px; font: 600 11px/1 var(--cond); letter-spacing: .12em;
+    text-transform: uppercase; border-bottom: 2px solid transparent;
+  }
+  .tab:hover { color: var(--ink-dim); }
+  .tab.on { color: var(--ink); border-bottom-color: var(--accent); }
+  .panel { display: none; flex: 1; min-height: 0; flex-direction: column; }
+  .panel.on { display: flex; }
+
+  /* Strategy: one row per car, stints laid out as a proportional bar of the race distance. */
+  .srow {
+    display: grid; grid-template-columns: 44px 1fr 26px; align-items: center;
+    gap: 9px; padding: 7px 13px; border-bottom: 1px solid #1a212c;
+  }
+  .track-bar { display: flex; height: 17px; border-radius: 4px; overflow: hidden; gap: 1px; }
+  .stint {
+    display: grid; place-items: center; min-width: 0;
+    font: 700 9px/1 var(--mono); color: #0a0d12;
+  }
+  .stops { font: 12px/1 var(--mono); color: var(--ink-dim); text-align: right; }
+
+  /* Conditions: observed readings, visibly separated from anything the simulator produced. */
+  .cond { padding: 13px; display: flex; flex-direction: column; gap: 13px; }
+  .cond-note {
+    font: 400 11px/1.55 var(--sans); color: var(--ink-faint);
+    border-left: 2px solid var(--line); padding-left: 10px;
+  }
+  .cond-note b { color: var(--ink-dim); font-weight: 600; }
+  .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .stat {
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px;
+  }
+  .stat .k {
+    font: 600 9px/1 var(--mono); letter-spacing: .11em; color: var(--ink-faint);
+    text-transform: uppercase;
+  }
+  .stat .v { font: 600 17px/1.25 var(--mono); color: var(--ink); }
+  .stat .u { font-size: 11px; color: var(--ink-dim); }
+  .spark { display: block; width: 100%; height: 42px; }
+  .cond h4 {
+    margin: 0; font: 600 10px/1 var(--mono); letter-spacing: .12em;
+    color: var(--ink-faint); text-transform: uppercase;
+  }
+  .trap { display: flex; flex-direction: column; gap: 5px; }
+  .trap-row {
+    display: grid; grid-template-columns: 1fr 44px; align-items: center; gap: 8px;
+    font: 12px/1 var(--sans); color: var(--ink-dim);
+  }
+  .trap-bar { height: 13px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+  .trap-bar i { display: block; height: 100%; background: var(--accent); opacity: .7; }
+  .trap-row b { font: 500 11px/1 var(--mono); color: var(--ink); text-align: right; }
+  .wet { color: var(--yellow); }
+
   @media (max-width: 880px) {
     main { flex-direction: column; }
     aside { width: auto; border-left: none; border-top: 1px solid var(--line); max-height: 42%; }
@@ -152,6 +217,10 @@
     <div class="sub" id="subtitle">—</div>
   </div>
   <span class="spacer"></span>
+  <label class="picker">
+    <span>CIRCUIT</span>
+    <select id="circuit" aria-label="Circuit"></select>
+  </label>
   <div class="lapbox">LAP <b id="lap">1</b><span id="totalLaps"></span></div>
   <span class="flag" id="flag"><span class="dot"></span><span id="flagText">GREEN</span></span>
 </header>
@@ -162,8 +231,23 @@
     <div class="stamp" id="stamp"></div>
   </div>
   <aside>
-    <div class="aside-head"><span>ORDER</span><span>LAST LAP · GAP · TYRE</span></div>
-    <div class="board" id="board"></div>
+    <div class="tabs" role="tablist">
+      <button class="tab on" data-panel="order" role="tab">Order</button>
+      <button class="tab" data-panel="strategy" role="tab">Strategy</button>
+      <button class="tab" data-panel="conditions" role="tab">Conditions</button>
+    </div>
+    <div class="panel on" id="panel-order">
+      <div class="aside-head"><span>ORDER</span><span>LAST LAP · GAP · TYRE</span></div>
+      <div class="board" id="board"></div>
+    </div>
+    <div class="panel" id="panel-strategy">
+      <div class="aside-head"><span>STINTS</span><span id="stintNote">TYRES USED</span></div>
+      <div class="board" id="stints"></div>
+    </div>
+    <div class="panel" id="panel-conditions">
+      <div class="aside-head"><span>CONDITIONS</span><span>OBSERVED, NOT SIMULATED</span></div>
+      <div class="board" id="conditions"></div>
+    </div>
   </aside>
 </main>
 
@@ -181,11 +265,13 @@
 <script>
 (function () {
   "use strict";
-  const DATA = JSON.parse(document.getElementById("payload").textContent);
-  const TRACK = DATA.track;
-  const LINE = TRACK.centreline;
-  const PROFILE = TRACK.distanceProfile;
-  const N = LINE.length;
+  const BUNDLE = JSON.parse(document.getElementById("payload").textContent);
+  const RACES = BUNDLE.races;
+
+  // Everything below reads these. Selecting a circuit rebinds them and rebuilds the derived model,
+  // which is cheap: a race is a few thousand numbers, and rebuilding beats keeping several races'
+  // worth of derived state alive at once.
+  let DATA, TRACK, LINE, PROFILE, N, CARS, DURATION, LEADER_AT, FASTEST, cx, cy;
 
   // ---------------------------------------------------------------- race model
   // A car's position at an instant is not stored; it is derived. Each car carries its crossing
@@ -193,29 +279,39 @@
   // through the lap then goes through the circuit's real time-to-distance profile, so a car slows
   // for the corners instead of sliding round at a constant rate.
 
-  const CARS = DATA.cars.map(function (car, slot) {
-    const laps = car.laps;
-    const ends = laps.map(function (l) { return l.end; });
-    const starts = laps.map(function (l) { return l.end - l.time; });
-    return Object.assign({}, car, {
-      slot: slot,
-      ends: ends,
-      starts: starts,
-      finishAt: ends.length ? ends[ends.length - 1] : 0,
+  function selectRace(index) {
+    DATA = RACES[index];
+    TRACK = DATA.track;
+    LINE = TRACK.centreline;
+    PROFILE = TRACK.distanceProfile;
+    N = LINE.length;
+
+    CARS = DATA.cars.map(function (car, slot) {
+      const laps = car.laps;
+      return Object.assign({}, car, {
+        slot: slot,
+        ends: laps.map(function (l) { return l.end; }),
+        starts: laps.map(function (l) { return l.end - l.time; }),
+        finishAt: laps.length ? laps[laps.length - 1].end : 0,
+      });
     });
-  });
+    DURATION = DATA.raceDurationS;
 
-  const DURATION = DATA.raceDurationS;
-
-  // The leader's crossing time for each lap, for the lap counter and the timeline bands.
-  const LEADER_AT = [];
-  for (let lap = 1; lap <= DATA.totalLaps; lap++) {
-    let best = Infinity;
-    for (const car of CARS) {
-      const entry = car.laps[lap - 1];
-      if (entry && entry.end < best) best = entry.end;
+    // The leader's crossing time for each lap, for the lap counter and the timeline bands.
+    LEADER_AT = [];
+    for (let lap = 1; lap <= DATA.totalLaps; lap++) {
+      let best = Infinity;
+      for (const car of CARS) {
+        const entry = car.laps[lap - 1];
+        if (entry && entry.end < best) best = entry.end;
+      }
+      LEADER_AT.push(isFinite(best) ? best : DURATION);
     }
-    LEADER_AT.push(isFinite(best) ? best : DURATION);
+    FASTEST = buildFastest();
+
+    cx = 0; cy = 0;
+    for (const point of LINE) { cx += point[0]; cy += point[1]; }
+    cx /= N; cy /= N;
   }
 
   function distanceFraction(timeFraction) {
@@ -273,7 +369,7 @@
   // seen up to that point. A running minimum computed once, so "who holds the fastest lap right
   // now" is a lookup rather than a scan over every car on every frame. Purple for the fastest lap
   // of the race is F1's own convention and it is the one thing on this screen that changes hands.
-  const FASTEST = (function () {
+  function buildFastest() {
     const events = [];
     for (const car of CARS) {
       for (const entry of car.laps) {
@@ -289,7 +385,7 @@
       event.holder = holder;
     }
     return events;
-  })();
+  }
 
   function fastestAt(t) {
     let low = 0, high = FASTEST.length - 1, found = null;
@@ -313,11 +409,6 @@
   }
 
   // ---------------------------------------------------------------- geometry
-  // Track extent, and the centroid used to nudge a pitting car off the racing line.
-  let cx = 0, cy = 0;
-  for (const p of LINE) { cx += p[0]; cy += p[1]; }
-  cx /= N; cy /= N;
-
   const canvas = document.getElementById("canvas");
   const ctx = canvas.getContext("2d");
   let view = { scale: 1, ox: 0, oy: 0 };
@@ -436,7 +527,7 @@
 
   // ---------------------------------------------------------------- board
   const board = document.getElementById("board");
-  const rows = new Map();
+  let rows = new Map();
 
   function rowFor(car) {
     let row = rows.get(car.driver);
@@ -497,6 +588,129 @@
 
   }
 
+  // ---------------------------------------------------------------- strategy panel
+  // Every car's race as a proportional bar of stints. This is the shape a pit wall reasons in:
+  // not "what tyre is on now" but "how long has each set lasted, and what is left to do".
+
+  function renderStrategy() {
+    const host = document.getElementById("stints");
+    host.textContent = "";
+    const ordered = DATA.cars.slice().sort(function (a, b) { return a.finish - b.finish; });
+    for (const car of ordered) {
+      const row = document.createElement("div");
+      row.className = "srow";
+
+      const code = document.createElement("span");
+      code.className = "code";
+      code.textContent = car.driver;
+      code.style.color = car.colour;
+
+      const bar = document.createElement("div");
+      bar.className = "track-bar";
+      for (const stint of car.stints) {
+        const block = document.createElement("span");
+        block.className = "stint";
+        block.style.flex = String(Math.max(stint.share, 0.02));
+        block.style.background = DATA.compoundColours[stint.compound] || "#808A99";
+        block.title =
+          stint.compound + " · laps " + stint.firstLap + "-" + stint.lastLap +
+          " (" + stint.laps + ")";
+        block.textContent = stint.laps >= 4 ? stint.compound.slice(0, 1) + stint.laps : "";
+        bar.appendChild(block);
+      }
+
+      const stops = document.createElement("span");
+      stops.className = "stops";
+      stops.textContent = String(car.stops);
+
+      row.append(code, bar, stops);
+      host.appendChild(row);
+    }
+    document.getElementById("stintNote").textContent =
+      DATA.totalLaps + " LAPS · STOPS";
+  }
+
+  // ---------------------------------------------------------------- conditions panel
+  // Observed readings only. Nothing here feeds the simulation, and the panel says so, because a
+  // temperature trace next to a simulated race implies a model this project does not have.
+
+  function sparkline(values, stroke) {
+    if (!values || values.length < 2) return "";
+    const lo = Math.min.apply(null, values), hi = Math.max.apply(null, values);
+    const span = hi - lo || 1;
+    const points = values.map(function (value, index) {
+      const x = (index / (values.length - 1)) * 100;
+      const y = 34 - ((value - lo) / span) * 28;
+      return x.toFixed(2) + "," + y.toFixed(2);
+    });
+    return (
+      '<svg class="spark" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">' +
+      '<polyline points="' + points.join(" ") + '" fill="none" stroke="' + stroke +
+      '" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>'
+    );
+  }
+
+  function renderConditions() {
+    const host = document.getElementById("conditions");
+    const c = DATA.conditions;
+    if (!c) {
+      host.innerHTML =
+        '<div class="cond"><p class="cond-note">No ingested race at this circuit, so there are ' +
+        'no recorded conditions to show.</p></div>';
+      return;
+    }
+    const air = c.airTempC, track = c.trackTempC;
+    const range = function (v) {
+      return v.length ? Math.min.apply(null, v).toFixed(0) + "–" + Math.max.apply(null, v).toFixed(0) : "—";
+    };
+    const fastestTrap = c.teams.length ? c.teams[0].speedTrapKph : 0;
+
+    const trapRows = c.teams.map(function (team) {
+      const width = fastestTrap ? (team.speedTrapKph / fastestTrap) * 100 : 0;
+      // Bars start at 85% of the fastest so the spread between teams is actually visible.
+      const scaled = Math.max(0, (width - 85) / 15 * 100);
+      return (
+        '<div class="trap-row"><span>' + team.team +
+        '<div class="trap-bar"><i style="width:' + scaled.toFixed(1) + '%"></i></div></span>' +
+        "<b>" + team.speedTrapKph.toFixed(0) + "</b></div>"
+      );
+    }).join("");
+
+    const compounds = c.compounds.map(function (entry) {
+      const colour = DATA.compoundColours[entry[0]] || "#808A99";
+      return (
+        '<div class="trap-row"><span>' + entry[0] +
+        '<div class="trap-bar"><i style="width:' +
+        ((entry[1] / c.compounds[0][1]) * 100).toFixed(0) +
+        '%;background:' + colour + '"></i></div></span><b>' + entry[1] + "</b></div>"
+      );
+    }).join("");
+
+    host.innerHTML =
+      '<div class="cond">' +
+        '<p class="cond-note"><b>Recorded at ' + c.event + " " + c.season + ".</b> " +
+        "These are real readings from that session, shown as context. The simulator is calibrated " +
+        "on dry races only: it has no weather model and no engine model, so nothing on this tab " +
+        "changes the race you are watching." +
+        (c.wasDry ? "" : ' <span class="wet">That session ran wet.</span>') + "</p>" +
+
+        '<div class="stat-row">' +
+          '<div class="stat"><div class="k">Air</div><div class="v">' + range(air) +
+            '<span class="u">°C</span></div>' + sparkline(air, "#5aa9ff") + "</div>" +
+          '<div class="stat"><div class="k">Track</div><div class="v">' + range(track) +
+            '<span class="u">°C</span></div>' + sparkline(track, "#ffd21f") + "</div>" +
+        "</div>" +
+
+        "<div><h4>Speed trap by team</h4>" +
+        '<p class="cond-note">Straight-line speed, which is mostly power and drag &mdash; the ' +
+        "closest thing to an engine reading in this data. Median km/h.</p>" +
+        '<div class="trap">' + trapRows + "</div></div>" +
+
+        "<div><h4>Tyres used that race</h4>" +
+        '<div class="trap">' + compounds + "</div></div>" +
+      "</div>";
+  }
+
   // ---------------------------------------------------------------- clock + controls
   let clock = 0;
   let playing = false;
@@ -549,8 +763,9 @@
   };
 
   // Timeline bands for every neutralisation, positioned by the leader's crossing times.
-  (function bands() {
+  function renderBands() {
     const ticks = document.getElementById("ticks");
+    [].slice.call(ticks.querySelectorAll(".band")).forEach(function (b) { b.remove(); });
     Object.keys(DATA.flags).forEach(function (lapKey) {
       const lap = Number(lapKey);
       const from = lap <= 1 ? 0 : LEADER_AT[lap - 2];
@@ -561,7 +776,7 @@
       band.style.width = Math.max(0.35, ((to - from) / DURATION) * 100) + "%";
       ticks.appendChild(band);
     });
-  })();
+  }
 
   // ---------------------------------------------------------------- frame
   function draw() {
@@ -612,30 +827,70 @@
     requestAnimationFrame(tick);
   }
 
-  // ---------------------------------------------------------------- boot
-  document.getElementById("title").textContent = DATA.title;
-  document.getElementById("subtitle").textContent =
-    DATA.circuit + " · " + TRACK.lapDistanceM.toLocaleString() + " m lap · " +
-    DATA.totalLaps + " laps · reference lap " + DATA.referenceLapS.toFixed(2) + "s";
-  document.getElementById("totalLaps").textContent = "/" + DATA.totalLaps;
-  document.getElementById("stamp").innerHTML =
-    "track geometry: real position telemetry, " + DATA.circuit + " " + TRACK.season +
-    "<br>race: simulated from params.json · run " + DATA.runId +
-    "<br>pace level: " + DATA.anchorMode;
+  // ---------------------------------------------------------------- panels + picker
+  const tabs = [].slice.call(document.querySelectorAll(".tab"));
+  function showPanel(name) {
+    tabs.forEach(function (tab) { tab.classList.toggle("on", tab.dataset.panel === name); });
+    ["order", "strategy", "conditions"].forEach(function (key) {
+      document.getElementById("panel-" + key).classList.toggle("on", key === name);
+    });
+  }
+  tabs.forEach(function (tab) {
+    tab.onclick = function () { showPanel(tab.dataset.panel); };
+  });
 
-  // A moment in the race can be linked to: `#t=0.45` opens at 45% distance, `#t=1200s` at 1200
-  // seconds. Handy for pointing somebody at the safety car rather than asking them to scrub to it.
-  (function seek() {
-    const match = /t=([0-9.]+)(s?)/.exec(window.location.hash || "");
-    if (!match) return;
-    const value = parseFloat(match[1]);
-    if (!isFinite(value)) return;
-    clock = Math.min(DURATION, match[2] === "s" ? value : value * DURATION);
-  })();
+  const picker = document.getElementById("circuit");
+  RACES.forEach(function (race, index) {
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = race.circuit + " · " + race.totalLaps + " laps";
+    picker.appendChild(option);
+  });
+  picker.onchange = function () { load(Number(picker.value), 0); };
+
+  function load(index, at) {
+    selectRace(index);
+    picker.value = String(index);
+
+    board.textContent = "";
+    rows = new Map();
+    renderStrategy();
+    renderConditions();
+    renderBands();
+
+    document.getElementById("title").textContent = DATA.title;
+    document.getElementById("subtitle").textContent =
+      DATA.circuit + " · " + TRACK.lapDistanceM.toLocaleString() + " m lap · " +
+      DATA.totalLaps + " laps · reference lap " + DATA.referenceLapS.toFixed(2) + "s";
+    document.getElementById("totalLaps").textContent = "/" + DATA.totalLaps;
+    document.getElementById("stamp").innerHTML =
+      "track geometry: real position telemetry, " + DATA.circuit + " " + TRACK.season +
+      "<br>race: simulated from params.json · run " + DATA.runId +
+      "<br>pace level: " + DATA.anchorMode;
+
+    clock = Math.min(at || 0, DURATION);
+    layout();
+    draw();
+  }
+
+  // ---------------------------------------------------------------- boot
+  // A moment can be linked to: `#t=0.45` opens at 45% distance, `#t=1200s` at 1200 seconds, and
+  // `#race=2` picks a circuit. Handy for pointing somebody at the safety car rather than asking
+  // them to scrub to it.
+  const hash = window.location.hash || "";
+  const wantedRace = /race=(\d+)/.exec(hash);
+  const start = /t=([0-9.]+)(s?)/.exec(hash);
+  const index = wantedRace ? Math.min(RACES.length - 1, Number(wantedRace[1])) : 0;
+  const wantedPanel = /panel=(order|strategy|conditions)/.exec(hash);
+  if (wantedPanel) showPanel(wantedPanel[1]);
+
+  selectRace(index);
+  const at = start && isFinite(parseFloat(start[1]))
+    ? (start[2] === "s" ? parseFloat(start[1]) : parseFloat(start[1]) * DURATION)
+    : 0;
+  load(index, at);
 
   window.addEventListener("resize", function () { layout(); draw(); });
-  layout();
-  draw();
   last = performance.now();
   requestAnimationFrame(tick);
 })();

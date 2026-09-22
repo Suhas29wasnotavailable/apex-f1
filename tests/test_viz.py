@@ -12,11 +12,12 @@ import json
 import math
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from apex.sim import RaceSimulator, ReactiveRules, from_grid
-from apex.viz.page import render_page, write_page
+from apex.viz.page import render_page, season_payload, write_page
 from apex.viz.replay import COMPOUND_COLOURS, TEAM_COLOURS, replay_payload
 from apex.viz.track import CENTRELINE_POINTS, PROFILE_SAMPLES, TrackGeometry, track_payload
 from tests.test_sim import CIRCUIT, bundle, parameters, settings
@@ -191,14 +192,79 @@ def test_known_teams_keep_their_own_colour() -> None:
 # --------------------------------------------------------------------------- the page
 
 
-def test_the_page_embeds_the_payload_and_parses_back() -> None:
-    payload = race_payload()
-    html = render_page(payload)
+def embedded(html: str) -> dict[str, Any]:
+    """Pull the payload back out of a rendered page, the way the page itself reads it."""
     match = re.search(r'<script id="payload" type="application/json">(.*?)</script>', html, re.S)
     assert match, "the payload script block must survive rendering"
-    recovered = json.loads(match.group(1).replace("<\\/", "</"))
-    assert recovered["totalLaps"] == payload["totalLaps"]
-    assert len(recovered["cars"]) == len(payload["cars"])  # type: ignore[arg-type]
+    payload: dict[str, Any] = json.loads(match.group(1).replace("<\\/", "</"))
+    return payload
+
+
+def test_the_page_embeds_the_payload_and_parses_back() -> None:
+    payload = race_payload()
+    recovered = embedded(render_page(payload))
+    # A lone race is wrapped, so the page only ever has one shape to read.
+    assert list(recovered) == ["title", "races"]
+    assert len(recovered["races"]) == 1
+    race = recovered["races"][0]
+    assert race["totalLaps"] == payload["totalLaps"]
+    assert len(race["cars"]) == len(payload["cars"])  # type: ignore[arg-type]
+
+
+def test_several_races_travel_in_one_page() -> None:
+    """One page holding a calendar is the point: the same grid races differently by circuit."""
+    first = race_payload(cars=6, laps=20)
+    second = race_payload(cars=6, laps=30)
+    bundle = season_payload([first, second], title="Two races")
+    recovered = embedded(render_page(bundle))
+
+    assert recovered["title"] == "Two races"
+    assert [race["totalLaps"] for race in recovered["races"]] == [20, 30]
+
+
+def test_a_page_needs_at_least_one_race() -> None:
+    with pytest.raises(ValueError, match="at least one race"):
+        season_payload([])
+
+
+# --------------------------------------------------------------------------- strategy
+
+
+def test_every_car_has_stints_covering_the_whole_race() -> None:
+    """The strategy panel draws stints as shares of the distance, so they must tile it exactly."""
+    payload = race_payload(cars=6, laps=30)
+    for car in payload["cars"]:  # type: ignore[attr-defined]
+        stints = car["stints"]
+        assert stints, "a car that finished ran at least one stint"
+        assert stints[0]["firstLap"] == 1
+        assert stints[-1]["lastLap"] == 30
+        assert sum(entry["laps"] for entry in stints) == 30
+        assert sum(entry["share"] for entry in stints) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_stints_are_contiguous_and_in_order() -> None:
+    for car in race_payload(cars=6, laps=30)["cars"]:  # type: ignore[attr-defined]
+        for previous, current in itertools.pairwise(car["stints"]):
+            assert current["firstLap"] == previous["lastLap"] + 1
+            assert current["stint"] > previous["stint"]
+
+
+def test_a_stop_shows_up_as_another_stint() -> None:
+    payload = race_payload(cars=6, laps=30)
+    for car in payload["cars"]:  # type: ignore[attr-defined]
+        assert len(car["stints"]) == car["stops"] + 1
+
+
+# --------------------------------------------------------------------------- conditions
+
+
+def test_conditions_are_absent_rather_than_invented_when_nothing_is_ingested() -> None:
+    """A replay of a circuit with no ingested race is still a replay; it just has no readings.
+
+    The alternative — fabricating a temperature — would put a number on screen that the simulator
+    neither produced nor can act on, which is the one thing this panel must never do.
+    """
+    assert race_payload()["conditions"] is None
 
 
 def test_no_placeholder_survives_into_the_page() -> None:
