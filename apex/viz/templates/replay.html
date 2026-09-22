@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__ · APEX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <style>
   :root {
     --bg: #0a0d12;
@@ -17,14 +20,18 @@
     --track-edge: #3d4654;
     --green: #2ee56d;
     --yellow: #ffd21f;
+    --purple: #b14bf4;
     --accent: #5aa9ff;
-    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --cond: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+    --sans: Barlow, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
     background: var(--bg); color: var(--ink);
-    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font: 14px/1.45 var(--sans);
+    font-variant-numeric: tabular-nums;
     display: flex; flex-direction: column; overflow: hidden;
   }
 
@@ -33,12 +40,12 @@
     padding: 12px 18px; border-bottom: 1px solid var(--line);
     background: var(--panel); flex: none;
   }
-  .brand { font-weight: 700; letter-spacing: .14em; font-size: 12px; color: var(--accent); }
-  .title { font-weight: 600; font-size: 15px; }
+  .brand { font: 700 13px/1 var(--cond); letter-spacing: .22em; color: var(--accent); }
+  .title { font: 600 19px/1.1 var(--cond); letter-spacing: .01em; }
   .sub { color: var(--ink-faint); font-size: 12px; }
   .spacer { flex: 1; }
   .lapbox { font: 600 13px/1 var(--mono); color: var(--ink-dim); }
-  .lapbox b { color: var(--ink); font-size: 18px; }
+  .lapbox b { color: var(--ink); font: 700 20px/1 var(--mono); }
   .flag {
     display: inline-flex; align-items: center; gap: 7px;
     padding: 5px 11px; border-radius: 999px; font: 600 11px/1 var(--mono);
@@ -71,14 +78,20 @@
   }
   .board { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
   .row {
-    display: grid; grid-template-columns: 26px 10px 46px 1fr 30px 26px;
-    align-items: center; gap: 8px; padding: 7px 14px;
+    display: grid; grid-template-columns: 24px 10px 44px 62px 1fr 28px 22px;
+    align-items: center; gap: 7px; padding: 7px 13px;
     border-bottom: 1px solid #1a212c; font-size: 13px;
   }
+  .last { font: 500 12px/1 var(--mono); color: var(--ink-dim); }
+  /* Purple marks whoever holds the fastest lap of the race, and it stays with them until somebody
+     takes it -- which is how a timing tower shows it, and it is the one badge here that changes
+     hands mid-race. */
+  .code.fastest { color: var(--purple); }
+  .code.fastest::after { content: " \25CF"; font-size: 8px; vertical-align: 2px; }
   .row.pitting { background: #1d2331; }
   .pos { font: 600 12px/1 var(--mono); color: var(--ink-dim); text-align: right; }
   .bar { width: 4px; height: 20px; border-radius: 2px; }
-  .code { font: 600 13px/1 var(--mono); letter-spacing: .04em; }
+  .code { font: 700 14px/1 var(--cond); letter-spacing: .09em; }
   .gap { font: 12px/1 var(--mono); color: var(--ink-dim); }
   .tyre {
     width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
@@ -149,7 +162,7 @@
     <div class="stamp" id="stamp"></div>
   </div>
   <aside>
-    <div class="aside-head"><span>ORDER</span><span id="boardNote">GAP TO LEADER</span></div>
+    <div class="aside-head"><span>ORDER</span><span>LAST LAP · GAP · TYRE</span></div>
     <div class="board" id="board"></div>
   </aside>
 </main>
@@ -254,6 +267,37 @@
       // Using this lap's own end-of-lap gap would be showing a number that has not happened yet.
       measured: i > 0 ? laps[i - 1] : null,
     };
+  }
+
+  // Every completed lap in the race, in the order the line was crossed, carrying the fastest time
+  // seen up to that point. A running minimum computed once, so "who holds the fastest lap right
+  // now" is a lookup rather than a scan over every car on every frame. Purple for the fastest lap
+  // of the race is F1's own convention and it is the one thing on this screen that changes hands.
+  const FASTEST = (function () {
+    const events = [];
+    for (const car of CARS) {
+      for (const entry of car.laps) {
+        if (entry.pit) continue;           // an in-lap is not a representative lap
+        events.push({ at: entry.end, time: entry.time, driver: car.driver });
+      }
+    }
+    events.sort(function (a, b) { return a.at - b.at; });
+    let best = Infinity, holder = null;
+    for (const event of events) {
+      if (event.time < best) { best = event.time; holder = event.driver; }
+      event.best = best;
+      event.holder = holder;
+    }
+    return events;
+  })();
+
+  function fastestAt(t) {
+    let low = 0, high = FASTEST.length - 1, found = null;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (FASTEST[mid].at <= t) { found = FASTEST[mid]; low = mid + 1; } else { high = mid - 1; }
+    }
+    return found;
   }
 
   function leaderLap(t) {
@@ -403,6 +447,7 @@
       '<span class="pos"></span>' +
       '<span class="bar" style="background:' + car.colour + '"></span>' +
       '<span class="code"></span>' +
+      '<span class="last"></span>' +
       '<span class="gap"></span>' +
       '<span class="tyre"></span>' +
       '<span class="age"></span>';
@@ -411,6 +456,7 @@
       el: el,
       pos: el.querySelector(".pos"),
       code: el.querySelector(".code"),
+      last: el.querySelector(".last"),
       gap: el.querySelector(".gap"),
       tyre: el.querySelector(".tyre"),
       age: el.querySelector(".age"),
@@ -419,7 +465,7 @@
     return row;
   }
 
-  function updateBoard(order) {
+  function updateBoard(order, fastest) {
     order.forEach(function (item, index) {
       const row = rowFor(item.car);
       const entry = item.state.entry;
@@ -437,6 +483,11 @@
       } else {
         row.gap.textContent = "—";
       }
+      const done = item.state.measured || (item.state.finished ? entry : null);
+      row.last.textContent = done ? lapTime(done.time) : "—";
+      row.code.classList.toggle(
+        "fastest", !!(fastest && fastest.holder === item.car.driver)
+      );
       row.tyre.textContent = entry.compound.slice(0, 1);
       row.tyre.style.background = DATA.compoundColours[entry.compound] || "#888";
       row.age.textContent = String(entry.age);
@@ -459,6 +510,12 @@
   const elLap = document.getElementById("lap");
   const elFlag = document.getElementById("flag");
   const elFlagText = document.getElementById("flagText");
+
+  function lapTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = (seconds - m * 60).toFixed(3).padStart(6, "0");
+    return m + ":" + s;
+  }
 
   function mmss(seconds) {
     const s = Math.max(0, Math.round(seconds));
@@ -526,7 +583,7 @@
     for (let i = order.length - 1; i >= 0; i--) {
       drawCar(order[i].car, order[i].state, i);
     }
-    updateBoard(order);
+    updateBoard(order, fastestAt(clock));
 
     elLap.textContent = String(leaderLap(clock));
     elClock.textContent = mmss(clock) + " / " + mmss(DURATION);
