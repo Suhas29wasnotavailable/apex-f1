@@ -31,3 +31,5 @@ web/.vite/
 .DS_Store
 .idea/
 .vscode/
+web/*.html
+data/tracks/

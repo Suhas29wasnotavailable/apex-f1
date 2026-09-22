@@ -18,6 +18,26 @@ reinforcement learning loses.**
 > matters most — where each car finishes — it is beaten by the baseline that predicts everybody
 > finishes where they qualified. That result is published in full below.
 
+## Watch a race
+
+```bash
+make replay                                   # simulate a race and open the replay
+uv run apex replay --circuit Monaco --laps 78 # any circuit, any grid
+```
+
+That writes one self-contained HTML file and opens it. No server, no build step, works offline.
+You get a top-down view of the field on the circuit's **real outline**, a live timing tower, the
+safety car turning the track yellow and bunching the pack, tyre compounds and ages, pit stops, and a
+scrubbable timeline with the neutralisations marked.
+
+Two things in it are real measurements rather than drawings. The **track outline** is traced from
+FastF1 position telemetry, so Monaco has its hairpin and Silverstone has Maggotts–Becketts. And cars
+move around it on a **real speed profile** taken from a fast lap, so they slow for the corners
+instead of sliding round at a constant rate.
+
+Everything else — who is where, on what tyre, how far apart — comes from `params/params.json` and
+nothing else.
+
 ## What is being built
 
 | Layer | What it is |
@@ -136,6 +156,7 @@ make ingest-all  # download every race of 2022-2025 -- slow, and rate-limited to
 make laps        # report what the exclusion rules keep, and what they cost
 make calibrate   # fit every parameter, write params/ and the calibration report
 make race        # simulate one race from a grid and print the result
+make replay      # simulate a race and open a watchable top-down replay
 make validate    # measure the simulator against the held-out races and print the error
 ```
 
@@ -160,7 +181,7 @@ that print "not implemented yet".
 | P3 | Classical baselines: rule-based, dynamic programming, MCTS | next |
 | P4 | Custom PPO agent, and the deterministic-vs-stochastic experiment | |
 | P5 | FastAPI + WebSocket serving layer | |
-| P6 | Frontend: track replay, strategy Gantt, counterfactual fork | |
+| P6 | Frontend: track replay, strategy Gantt, counterfactual fork | replay done |
 | P7 | Ship: Docker Compose, deployed demo, model card, `LIMITATIONS.md` | |
 
 ## Licence

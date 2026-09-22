@@ -7,6 +7,8 @@ sub-command alongside a Makefile target.
 from __future__ import annotations
 
 import json
+import webbrowser
+from pathlib import Path
 
 import polars as pl
 import typer
@@ -16,12 +18,14 @@ from apex.calibrate.dataset import training_laps
 from apex.calibrate.exclusions import clean_laps
 from apex.calibrate.params import ParameterSet, calibrate, params_path, schema_path, write_schema
 from apex.calibrate.report import render_report
-from apex.config import AppSettings, get_settings
+from apex.config import PROJECT_ROOT, AppSettings, get_settings
 from apex.data import SessionRecord, ingest_seasons, load_laps, manifest_frame
+from apex.data.schema import event_slug
 from apex.data.sources import RateLimitError
 from apex.eval import validate_holdout
 from apex.sim import RaceSimulator, ReactiveRules, from_grid
 from apex.sim.scenario import AnchorMode
+from apex.viz import load_track, replay_payload, write_page
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="APEX -- F1 race digital twin.")
 
@@ -254,6 +258,75 @@ def race(
         typer.echo(f"Virtual safety car: laps {list(trace.virtual_safety_car_laps)}")
     typer.echo(_table(trace.results_frame().drop("team")))
     typer.echo(f"run_id={trace.seed_run_id}")
+
+
+@app.command()
+def replay(
+    *,
+    circuit: str = typer.Option(..., help="Circuit to race at, as the parameter file names it."),
+    laps: int = typer.Option(..., help="Race distance."),
+    season: int = typer.Option(
+        2025, help="Season, used to place the pace level on the fitted trend."
+    ),
+    drivers: str = typer.Option(
+        "VER,NOR,PIA,LEC,RUS,HAM,ANT,ALO,GAS,SAI,HUL,OCO,STR,TSU,ALB,LAW,BEA,COL,HAD,BOR",
+        help="Starting grid, front to back.",
+    ),
+    stops: int = typer.Option(1, help="Planned stops for the rule-based pit wall."),
+    episode: int = typer.Option(0, help="Episode index; a different race from the same grid."),
+    out: Path | None = typer.Option(  # noqa: B008 - typer reads defaults at decoration time
+        None, help="Where to write the page. Defaults to web/."
+    ),
+    track_season: int | None = typer.Option(
+        None, help="Season to trace the track from. The latest ingested one by default."
+    ),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the page when written."),
+) -> None:
+    """Simulate a race and write a self-contained HTML replay you can watch.
+
+    The track outline comes from real position telemetry, fetched once per circuit and cached. The
+    race itself comes from `params/params.json` and nothing else.
+    """
+    settings = get_settings()
+    path = params_path(settings)
+    if not path.is_file():
+        typer.echo("No parameters fitted yet. Run `apex calibrate`.")
+        raise typer.Exit(code=1)
+
+    parameters = ParameterSet.read(path)
+    grid = [name.strip().upper() for name in drivers.split(",") if name.strip()]
+    try:
+        scenario = from_grid(
+            parameters,
+            circuit=circuit,
+            season=season,
+            total_laps=laps,
+            grid=grid,
+            settings=settings,
+        )
+    except KeyError:
+        known = ", ".join(sorted(entry.circuit for entry in parameters.baseline.circuits))
+        typer.echo(f"No baseline fitted for circuit {circuit!r}.\nFitted circuits: {known}")
+        raise typer.Exit(code=1) from None
+
+    simulator = RaceSimulator(parameters, settings)
+    bundle = settings.seeds().derive("race").derive(circuit).episode(episode)
+    trace = simulator.run(scenario, ReactiveRules(target_stops=stops), bundle)
+
+    typer.echo(f"Simulated {laps} laps at {circuit}: {trace.winner.driver} wins.")
+    try:
+        geometry = load_track(circuit, track_season, settings)
+    except RuntimeError as error:
+        typer.echo(f"\nCould not build the track outline: {error}")
+        raise typer.Exit(code=1) from error
+
+    destination = out or (PROJECT_ROOT / "web" / f"replay-{event_slug(circuit)}.html")
+    payload = replay_payload(trace, geometry, settings)
+    write_page(payload, destination)
+    typer.echo(f"Wrote {destination} ({destination.stat().st_size // 1024} KB)")
+
+    if open_browser:
+        webbrowser.open(destination.resolve().as_uri())
 
 
 @app.command()

@@ -68,25 +68,48 @@ class ReactiveRules:
             not.
         min_stint: Never stop on a set younger than this, so a neutralisation lasting several laps
             cannot trigger several stops.
+        stagger: Spread of the planned stop across the field, in laps. Every car sharing one plan
+            would send twenty cars down the pit lane on the same lap, which no pit wall does and
+            which quietly removes the queueing and traffic that make a stop's timing matter. The
+            offset is derived from the driver's own name, so it is fixed for a given car, different
+            between cars, and needs no state.
     """
 
     target_stops: int = 1
     compounds: tuple[str, ...] = ("HARD",)
     safety_car_window: int = 12
     min_stint: int = 8
+    stagger: int = 5
 
     def reset(self) -> None:
         """Nothing to reset: every decision is derived from the view."""
 
-    def _planned_laps(self, total_laps: int) -> tuple[int, ...]:
-        """Evenly spaced stop laps for the plan."""
+    def _offset(self, driver: str) -> int:
+        """A stable per-car shift of the planned stop, centred on zero.
+
+        Derived from the driver code rather than from the running order, which changes lap to lap
+        and would make a car's plan wander as it gained and lost places.
+        """
+        if self.stagger <= 1:
+            return 0
+        seed = 0
+        for character in driver:
+            seed = (seed * 31 + ord(character)) % 1_000_003
+        return seed % self.stagger - self.stagger // 2
+
+    def _planned_laps(self, total_laps: int, driver: str = "") -> tuple[int, ...]:
+        """Evenly spaced stop laps for the plan, shifted by this car's own offset."""
         if self.target_stops < 1:
             return ()
         step = total_laps / (self.target_stops + 1)
-        return tuple(max(2, round(step * (index + 1))) for index in range(self.target_stops))
+        shift = self._offset(driver)
+        return tuple(
+            min(max(2, round(step * (index + 1)) + shift), total_laps - 1)
+            for index in range(self.target_stops)
+        )
 
     def decide(self, view: CarView) -> PitCall | None:
-        planned = self._planned_laps(view.total_laps)
+        planned = self._planned_laps(view.total_laps, view.driver)
         if view.stops >= len(planned):
             # The plan is complete. The two-compound rule may still be unsatisfied if the plan was
             # degenerate, and the simulator will force a stop; asking for the right compound here

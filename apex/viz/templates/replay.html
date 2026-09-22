@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__ · APEX</title>
+<style>
+  :root {
+    --bg: #0a0d12;
+    --panel: #12171f;
+    --panel-2: #171d27;
+    --line: #232b38;
+    --ink: #e8edf5;
+    --ink-dim: #8896ab;
+    --ink-faint: #5a6678;
+    --track: #2b323d;
+    --track-edge: #3d4654;
+    --green: #2ee56d;
+    --yellow: #ffd21f;
+    --accent: #5aa9ff;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  header {
+    display: flex; align-items: center; gap: 18px;
+    padding: 12px 18px; border-bottom: 1px solid var(--line);
+    background: var(--panel); flex: none;
+  }
+  .brand { font-weight: 700; letter-spacing: .14em; font-size: 12px; color: var(--accent); }
+  .title { font-weight: 600; font-size: 15px; }
+  .sub { color: var(--ink-faint); font-size: 12px; }
+  .spacer { flex: 1; }
+  .lapbox { font: 600 13px/1 var(--mono); color: var(--ink-dim); }
+  .lapbox b { color: var(--ink); font-size: 18px; }
+  .flag {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 5px 11px; border-radius: 999px; font: 600 11px/1 var(--mono);
+    letter-spacing: .08em; background: #10321d; color: var(--green);
+  }
+  .flag.sc  { background: #3a2f06; color: var(--yellow); }
+  .flag.vsc { background: #33290a; color: #ffe27a; }
+  .flag.end { background: #1b2330; color: var(--ink-dim); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .flag.sc .dot, .flag.vsc .dot { animation: blink 1s steps(2, start) infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  main { flex: 1; display: flex; min-height: 0; }
+  .stage { flex: 1; position: relative; min-width: 0; background:
+    radial-gradient(1200px 700px at 50% 42%, #101620 0%, var(--bg) 70%); }
+  canvas { display: block; width: 100%; height: 100%; }
+  .stamp {
+    position: absolute; left: 16px; bottom: 14px; font: 11px/1.6 var(--mono);
+    color: var(--ink-faint); pointer-events: none;
+  }
+
+  aside {
+    width: 330px; flex: none; border-left: 1px solid var(--line);
+    background: var(--panel); display: flex; flex-direction: column; min-height: 0;
+  }
+  .aside-head {
+    padding: 9px 14px; font: 600 10px/1 var(--mono); letter-spacing: .12em;
+    color: var(--ink-faint); border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between;
+  }
+  .board { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+  .row {
+    display: grid; grid-template-columns: 26px 10px 46px 1fr 30px 26px;
+    align-items: center; gap: 8px; padding: 7px 14px;
+    border-bottom: 1px solid #1a212c; font-size: 13px;
+  }
+  .row.pitting { background: #1d2331; }
+  .pos { font: 600 12px/1 var(--mono); color: var(--ink-dim); text-align: right; }
+  .bar { width: 4px; height: 20px; border-radius: 2px; }
+  .code { font: 600 13px/1 var(--mono); letter-spacing: .04em; }
+  .gap { font: 12px/1 var(--mono); color: var(--ink-dim); }
+  .tyre {
+    width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+    font: 700 10px/1 var(--mono); color: #0a0d12; border: 2px solid #0a0d12;
+  }
+  .age { font: 11px/1 var(--mono); color: var(--ink-faint); text-align: right; }
+  .tag {
+    font: 600 9px/1 var(--mono); letter-spacing: .08em; color: var(--yellow);
+  }
+
+  footer {
+    flex: none; border-top: 1px solid var(--line); background: var(--panel);
+    padding: 10px 18px; display: flex; align-items: center; gap: 16px;
+  }
+  button {
+    background: var(--panel-2); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 13px; font: 600 12px/1 var(--mono); cursor: pointer;
+  }
+  button:hover { border-color: #3a465a; }
+  button.on { background: var(--accent); border-color: var(--accent); color: #06101d; }
+  .play { width: 44px; }
+  .speeds { display: flex; gap: 5px; }
+  .clock { font: 12px/1 var(--mono); color: var(--ink-dim); min-width: 108px; }
+  .scrub { flex: 1; position: relative; height: 26px; min-width: 120px; }
+  .scrub input {
+    position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+    -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
+  }
+  .scrub input::-webkit-slider-runnable-track { height: 26px; background: transparent; }
+  .scrub input::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 22px; margin-top: 2px;
+    border-radius: 3px; background: var(--ink); border: none; cursor: pointer;
+  }
+  .scrub input::-moz-range-thumb {
+    width: 12px; height: 22px; border-radius: 3px; background: var(--ink); border: none;
+  }
+  .ticks {
+    position: absolute; left: 0; right: 0; top: 9px; height: 8px;
+    border-radius: 4px; background: #1d2431; overflow: hidden; pointer-events: none;
+  }
+  .ticks .band { position: absolute; top: 0; bottom: 0; }
+  .ticks .band.sc  { background: var(--yellow); opacity: .85; }
+  .ticks .band.vsc { background: #8a7418; }
+  .ticks .done { position: absolute; top: 0; bottom: 0; left: 0; background: #33405a; }
+
+  @media (max-width: 880px) {
+    main { flex-direction: column; }
+    aside { width: auto; border-left: none; border-top: 1px solid var(--line); max-height: 42%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand">APEX</span>
+  <div>
+    <div class="title" id="title">—</div>
+    <div class="sub" id="subtitle">—</div>
+  </div>
+  <span class="spacer"></span>
+  <div class="lapbox">LAP <b id="lap">1</b><span id="totalLaps"></span></div>
+  <span class="flag" id="flag"><span class="dot"></span><span id="flagText">GREEN</span></span>
+</header>
+
+<main>
+  <div class="stage">
+    <canvas id="canvas"></canvas>
+    <div class="stamp" id="stamp"></div>
+  </div>
+  <aside>
+    <div class="aside-head"><span>ORDER</span><span id="boardNote">GAP TO LEADER</span></div>
+    <div class="board" id="board"></div>
+  </aside>
+</main>
+
+<footer>
+  <button class="play" id="play">▶</button>
+  <div class="speeds" id="speeds"></div>
+  <div class="clock" id="clock">0:00 / 0:00</div>
+  <div class="scrub">
+    <div class="ticks" id="ticks"><div class="done" id="done"></div></div>
+    <input type="range" id="range" min="0" max="1000" value="0" step="1" aria-label="Race time">
+  </div>
+</footer>
+
+<script id="payload" type="application/json">__PAYLOAD__</script>
+<script>
+(function () {
+  "use strict";
+  const DATA = JSON.parse(document.getElementById("payload").textContent);
+  const TRACK = DATA.track;
+  const LINE = TRACK.centreline;
+  const PROFILE = TRACK.distanceProfile;
+  const N = LINE.length;
+
+  // ---------------------------------------------------------------- race model
+  // A car's position at an instant is not stored; it is derived. Each car carries its crossing
+  // times, and the lap it is on at time t is found by walking that array. Fractional progress
+  // through the lap then goes through the circuit's real time-to-distance profile, so a car slows
+  // for the corners instead of sliding round at a constant rate.
+
+  const CARS = DATA.cars.map(function (car, slot) {
+    const laps = car.laps;
+    const ends = laps.map(function (l) { return l.end; });
+    const starts = laps.map(function (l) { return l.end - l.time; });
+    return Object.assign({}, car, {
+      slot: slot,
+      ends: ends,
+      starts: starts,
+      finishAt: ends.length ? ends[ends.length - 1] : 0,
+    });
+  });
+
+  const DURATION = DATA.raceDurationS;
+
+  // The leader's crossing time for each lap, for the lap counter and the timeline bands.
+  const LEADER_AT = [];
+  for (let lap = 1; lap <= DATA.totalLaps; lap++) {
+    let best = Infinity;
+    for (const car of CARS) {
+      const entry = car.laps[lap - 1];
+      if (entry && entry.end < best) best = entry.end;
+    }
+    LEADER_AT.push(isFinite(best) ? best : DURATION);
+  }
+
+  function distanceFraction(timeFraction) {
+    const t = Math.min(Math.max(timeFraction, 0), 1);
+    const at = t * (PROFILE.length - 1);
+    const i = Math.floor(at);
+    if (i >= PROFILE.length - 1) return PROFILE[PROFILE.length - 1];
+    const w = at - i;
+    return PROFILE[i] * (1 - w) + PROFILE[i + 1] * w;
+  }
+
+  function stateOf(car, t) {
+    const laps = car.laps;
+    if (!laps.length) return null;
+
+    // `dFrac` is where to draw the car; `order` is how far it has actually got. They are separate
+    // because a car on the grid sits just *before* the line, at 99% of a lap, and ranking on that
+    // would show the whole grid as nearly a lap ahead of the car that has already started.
+    if (t < car.starts[0]) {
+      return {
+        lapIndex: 0, lap: 1, dFrac: 1 - 0.0075 * (car.slot + 1),
+        order: -0.001 * (car.slot + 1),
+        onGrid: true, finished: false, entry: laps[0],
+      };
+    }
+    if (t >= car.finishAt) {
+      return {
+        lapIndex: laps.length - 1, lap: DATA.totalLaps, dFrac: 0,
+        // Finished cars rank among themselves by who finished first, and all of them ahead of
+        // anyone still running.
+        order: DATA.totalLaps + 1 - car.finishAt / (DURATION + 1),
+        onGrid: false, finished: true, entry: laps[laps.length - 1],
+      };
+    }
+    // Linear scan from a guess. Laps are near-uniform in length, so the guess lands within a lap
+    // or two and this costs a handful of comparisons rather than a binary search per car per frame.
+    let i = Math.min(laps.length - 1, Math.max(0, Math.floor((t / DURATION) * laps.length)));
+    while (i > 0 && t < car.starts[i]) i--;
+    while (i < laps.length - 1 && t >= car.ends[i]) i++;
+
+    const entry = laps[i];
+    const tFrac = (t - car.starts[i]) / entry.time;
+    const dFrac = distanceFraction(tFrac);
+    return {
+      lapIndex: i, lap: entry.lap, dFrac: dFrac,
+      order: i + dFrac,
+      onGrid: false, finished: false, entry: entry,
+      // The gap a pit wall would be quoting: the one measured at the last completed crossing.
+      // Using this lap's own end-of-lap gap would be showing a number that has not happened yet.
+      measured: i > 0 ? laps[i - 1] : null,
+    };
+  }
+
+  function leaderLap(t) {
+    let lap = 1;
+    for (let i = 0; i < LEADER_AT.length; i++) {
+      if (t >= LEADER_AT[i]) lap = i + 2;
+    }
+    return Math.min(lap, DATA.totalLaps);
+  }
+
+  function flagAt(t) {
+    return DATA.flags[String(leaderLap(t))] || "green";
+  }
+
+  // ---------------------------------------------------------------- geometry
+  // Track extent, and the centroid used to nudge a pitting car off the racing line.
+  let cx = 0, cy = 0;
+  for (const p of LINE) { cx += p[0]; cy += p[1]; }
+  cx /= N; cy /= N;
+
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+  let view = { scale: 1, ox: 0, oy: 0 };
+
+  function layout() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const pad = 46;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of LINE) {
+      if (p[0] < minX) minX = p[0];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[1] > maxY) maxY = p[1];
+    }
+    const scale = Math.min((w - pad * 2) / (maxX - minX), (h - pad * 2) / (maxY - minY));
+    view = {
+      scale: scale,
+      ox: w / 2 - ((minX + maxX) / 2) * scale,
+      // Screen y grows downward while track coordinates grow upward, so y is flipped here.
+      oy: h / 2 + ((minY + maxY) / 2) * scale,
+    };
+  }
+
+  function project(x, y) {
+    return [x * view.scale + view.ox, -y * view.scale + view.oy];
+  }
+
+  function pointAt(dFrac) {
+    const wrapped = ((dFrac % 1) + 1) % 1;
+    const at = wrapped * N;
+    const i = Math.floor(at) % N;
+    const j = (i + 1) % N;
+    const w = at - Math.floor(at);
+    return [LINE[i][0] * (1 - w) + LINE[j][0] * w, LINE[i][1] * (1 - w) + LINE[j][1] * w];
+  }
+
+  function tracePath() {
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const p = project(LINE[i][0], LINE[i][1]);
+      if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+    }
+    ctx.closePath();
+  }
+
+  function drawTrack(flag) {
+    const width = Math.max(7, view.scale * 0.017);
+    ctx.lineJoin = ctx.lineCap = "round";
+
+    tracePath();
+    ctx.strokeStyle = flag === "green" ? "#3d4654" : "#6b5c14";
+    ctx.lineWidth = width + 5;
+    ctx.stroke();
+
+    tracePath();
+    ctx.strokeStyle = "#2b323d";
+    ctx.lineWidth = width;
+    ctx.stroke();
+
+    // Start/finish line, drawn across the track at the first centreline point.
+    const a = pointAt(0), b = pointAt(0.004);
+    const p = project(a[0], a[1]), q = project(b[0], b[1]);
+    const dx = q[0] - p[0], dy = q[1] - p[1];
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    const half = width / 2 + 1;
+    ctx.beginPath();
+    ctx.moveTo(p[0] + nx * half, p[1] + ny * half);
+    ctx.lineTo(p[0] - nx * half, p[1] - ny * half);
+    ctx.strokeStyle = "#e8edf5";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
+  function drawCar(car, state, rank) {
+    let pt = pointAt(state.dFrac);
+    // A pitting car is pulled toward the infield. There is no pit-lane geometry in the telemetry
+    // this is built from, so the offset is a readable convention rather than a measured path.
+    if (state.entry.pit && !state.finished) {
+      pt = [pt[0] + (cx - pt[0]) * 0.11, pt[1] + (cy - pt[1]) * 0.11];
+    }
+    const p = project(pt[0], pt[1]);
+    const r = Math.max(5, view.scale * 0.0125);
+
+    ctx.beginPath();
+    ctx.arc(p[0], p[1], r + 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(8,11,16,.85)";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
+    ctx.fillStyle = car.colour;
+    ctx.globalAlpha = state.entry.pit ? 0.45 : 1;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    if (rank === 0) {
+      ctx.beginPath();
+      ctx.arc(p[0], p[1], r + 4.5, 0, Math.PI * 2);
+      ctx.strokeStyle = "#e8edf5";
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+    }
+
+    ctx.font = "600 " + Math.max(9, Math.round(r * 1.45)) + "px ui-monospace, Menlo, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#0a0d12";
+    ctx.fillText(car.driver.slice(0, 3), p[0], p[1] + 0.5);
+  }
+
+  // ---------------------------------------------------------------- board
+  const board = document.getElementById("board");
+  const rows = new Map();
+
+  function rowFor(car) {
+    let row = rows.get(car.driver);
+    if (row) return row;
+    const el = document.createElement("div");
+    el.className = "row";
+    el.innerHTML =
+      '<span class="pos"></span>' +
+      '<span class="bar" style="background:' + car.colour + '"></span>' +
+      '<span class="code"></span>' +
+      '<span class="gap"></span>' +
+      '<span class="tyre"></span>' +
+      '<span class="age"></span>';
+    board.appendChild(el);
+    row = {
+      el: el,
+      pos: el.querySelector(".pos"),
+      code: el.querySelector(".code"),
+      gap: el.querySelector(".gap"),
+      tyre: el.querySelector(".tyre"),
+      age: el.querySelector(".age"),
+    };
+    rows.set(car.driver, row);
+    return row;
+  }
+
+  function updateBoard(order) {
+    order.forEach(function (item, index) {
+      const row = rowFor(item.car);
+      const entry = item.state.entry;
+      row.pos.textContent = String(index + 1);
+      row.code.textContent = item.car.driver;
+      const measured = item.state.measured;
+      if (index === 0) {
+        row.gap.textContent = item.state.finished ? "FINISHED" : "LEADER";
+      } else if (entry.pit) {
+        row.gap.innerHTML = '<span class="tag">IN PIT</span>';
+      } else if (item.state.onGrid) {
+        row.gap.textContent = "P" + item.car.grid;
+      } else if (measured) {
+        row.gap.textContent = "+" + measured.gapLeader.toFixed(1) + "s";
+      } else {
+        row.gap.textContent = "—";
+      }
+      row.tyre.textContent = entry.compound.slice(0, 1);
+      row.tyre.style.background = DATA.compoundColours[entry.compound] || "#888";
+      row.age.textContent = String(entry.age);
+      row.el.classList.toggle("pitting", !!entry.pit);
+      row.el.style.order = String(index);
+    });
+
+  }
+
+  // ---------------------------------------------------------------- clock + controls
+  let clock = 0;
+  let playing = false;
+  let speed = 20;
+  let last = 0;
+
+  const elPlay = document.getElementById("play");
+  const elRange = document.getElementById("range");
+  const elClock = document.getElementById("clock");
+  const elDone = document.getElementById("done");
+  const elLap = document.getElementById("lap");
+  const elFlag = document.getElementById("flag");
+  const elFlagText = document.getElementById("flagText");
+
+  function mmss(seconds) {
+    const s = Math.max(0, Math.round(seconds));
+    const m = Math.floor(s / 60);
+    return m + ":" + String(s % 60).padStart(2, "0");
+  }
+
+  const SPEEDS = [1, 5, 20, 60, 200];
+  const speedBox = document.getElementById("speeds");
+  SPEEDS.forEach(function (value) {
+    const b = document.createElement("button");
+    b.textContent = value + "×";
+    b.onclick = function () {
+      speed = value;
+      [].forEach.call(speedBox.children, function (c) { c.classList.remove("on"); });
+      b.classList.add("on");
+    };
+    if (value === speed) b.classList.add("on");
+    speedBox.appendChild(b);
+  });
+
+  elPlay.onclick = function () {
+    playing = !playing;
+    if (clock >= DURATION) clock = 0;
+    elPlay.textContent = playing ? "‖" : "▶";
+    last = performance.now();
+  };
+  elRange.oninput = function () {
+    clock = (Number(elRange.value) / 1000) * DURATION;
+    draw();
+  };
+
+  // Timeline bands for every neutralisation, positioned by the leader's crossing times.
+  (function bands() {
+    const ticks = document.getElementById("ticks");
+    Object.keys(DATA.flags).forEach(function (lapKey) {
+      const lap = Number(lapKey);
+      const from = lap <= 1 ? 0 : LEADER_AT[lap - 2];
+      const to = LEADER_AT[lap - 1];
+      const band = document.createElement("div");
+      band.className = "band " + DATA.flags[lapKey];
+      band.style.left = (from / DURATION) * 100 + "%";
+      band.style.width = Math.max(0.35, ((to - from) / DURATION) * 100) + "%";
+      ticks.appendChild(band);
+    });
+  })();
+
+  // ---------------------------------------------------------------- frame
+  function draw() {
+    const flag = clock >= DURATION ? "end" : flagAt(clock);
+    ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+    drawTrack(flag === "end" ? "green" : flag);
+
+    const order = [];
+    for (const car of CARS) {
+      const state = stateOf(car, clock);
+      if (!state) continue;
+      // Live running order is distance covered: laps completed plus the fraction of this one. It
+      // agrees with the recorded order at every line crossing and interpolates sensibly between.
+      order.push({ car: car, state: state });
+    }
+    order.sort(function (a, b) { return b.state.order - a.state.order; });
+
+    // Drawn back to front so the leader's ring is never hidden under a backmarker.
+    for (let i = order.length - 1; i >= 0; i--) {
+      drawCar(order[i].car, order[i].state, i);
+    }
+    updateBoard(order);
+
+    elLap.textContent = String(leaderLap(clock));
+    elClock.textContent = mmss(clock) + " / " + mmss(DURATION);
+    elRange.value = String(Math.round((clock / DURATION) * 1000));
+    elDone.style.width = (clock / DURATION) * 100 + "%";
+
+    elFlag.className = "flag" + (flag === "green" ? "" : " " + flag);
+    elFlagText.textContent =
+      flag === "sc" ? "SAFETY CAR" :
+      flag === "vsc" ? "VIRTUAL SC" :
+      flag === "end" ? "CHEQUERED" : "GREEN";
+  }
+
+  function tick(now) {
+    if (playing) {
+      const dt = Math.min(0.25, (now - last) / 1000);
+      last = now;
+      clock += dt * speed;
+      if (clock >= DURATION) {
+        clock = DURATION;
+        playing = false;
+        elPlay.textContent = "▶";
+      }
+      draw();
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // ---------------------------------------------------------------- boot
+  document.getElementById("title").textContent = DATA.title;
+  document.getElementById("subtitle").textContent =
+    DATA.circuit + " · " + TRACK.lapDistanceM.toLocaleString() + " m lap · " +
+    DATA.totalLaps + " laps · reference lap " + DATA.referenceLapS.toFixed(2) + "s";
+  document.getElementById("totalLaps").textContent = "/" + DATA.totalLaps;
+  document.getElementById("stamp").innerHTML =
+    "track geometry: real position telemetry, " + DATA.circuit + " " + TRACK.season +
+    "<br>race: simulated from params.json · run " + DATA.runId +
+    "<br>pace level: " + DATA.anchorMode;
+
+  // A moment in the race can be linked to: `#t=0.45` opens at 45% distance, `#t=1200s` at 1200
+  // seconds. Handy for pointing somebody at the safety car rather than asking them to scrub to it.
+  (function seek() {
+    const match = /t=([0-9.]+)(s?)/.exec(window.location.hash || "");
+    if (!match) return;
+    const value = parseFloat(match[1]);
+    if (!isFinite(value)) return;
+    clock = Math.min(DURATION, match[2] === "s" ? value : value * DURATION);
+  })();
+
+  window.addEventListener("resize", function () { layout(); draw(); });
+  layout();
+  draw();
+  last = performance.now();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

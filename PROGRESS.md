@@ -365,3 +365,65 @@ field better pre-race pace than a grid slot alone.
 - **Should the two-compound rule be enforced or priced?** It is currently enforced by a safety net
   that stops a car on the penultimate lap. A real penalty would let an agent weigh the trade.
 - **Redistribution of derived F1 data.** Unchanged since P0, and still worth settling before P7.
+
+---
+
+## P6a — Watching the race — ✅ complete (2026-09-22)
+
+Brought forward from P6, because a validation table is not a race and the only way to see whether the
+simulator behaves like one is to watch it.
+
+### Shipped
+
+- **`apex.viz`** — real track geometry, a replay payload, and a self-contained HTML page. `apex
+  replay` writes one file and opens it: no server, no build step, works offline.
+- **Track geometry from real position telemetry.** The centreline is resampled to points evenly
+  spaced *by distance*, which is what lets the page find a car's position by indexing an array
+  rather than searching arc length. Cached per circuit, so the network is touched once.
+- **A real speed profile.** Mapping elapsed time linearly onto distance would slide cars through
+  corners at straight-line speed. The profile records, for evenly spaced fractions of a lap's time,
+  the fraction of its distance covered — read off a real fast lap — so every simulated car follows a
+  real lap's shape scaled by its own time.
+- **The page**: top-down field on the circuit outline, live timing tower with gaps and tyre state,
+  safety car turning the track yellow, pit stops pulled off the racing line, scrubbable timeline
+  with neutralisations banded, speed control to 200×, and `#t=0.45` deep links into a moment.
+- **18 new tests**, 245 total.
+
+### Verified by evidence
+
+- Three circuits rendered and checked against their real layouts: **Monaco** (hairpin, swimming pool,
+  Rascasse), **Silverstone** (Maggotts–Becketts, Stowe) and **Monza**. Lap distances land within
+  about 1% of the published figures — Monaco 3,284 m against 3,337 m, Silverstone 5,819 m against
+  5,891 m — which is the resampling and the racing line, not an error.
+- The safety car is visible doing what the parameters say it should: the track goes yellow, the field
+  compresses into a train, the whole field dives into the pit lane, and the two cars furthest back
+  are still closing at the fitted catch-up rate rather than teleporting onto the queue.
+
+### What broke
+
+- **Cars still on the grid were ranked last.** A car waiting to start sits just *before* the line, at
+  99% of a lap, and ranking on that put the entire grid a lap ahead of whoever had already started —
+  so the leader showed P20 before the race began. Drawing position and running order are now
+  separate quantities.
+- **The payload's own arithmetic did not close.** Crossing times and lap durations were each rounded
+  to a millisecond independently, so `end - time` missed the previous lap's `end` by a thousandth.
+  Invisible on screen, and still a payload whose consumer cannot trust its own subtraction.
+  Durations are now derived from the rounded ends.
+- **Every car pitted on the same lap.** The rule-based pit wall gives every car an identical plan,
+  which no real team does and which quietly deletes the pit-lane traffic that makes a stop's timing
+  matter. Stops are now staggered by an offset derived from the driver's own name — stable per car,
+  different between cars, and needing no state. The exception is a safety car, where the whole field
+  really does dive in at once, and still does.
+
+### Still assumed (not yet evidence)
+
+- **There is no pit lane in the geometry.** A stopping car is pulled toward the infield and dimmed,
+  which reads correctly and is a convention rather than a measured path.
+- **Track width is drawn, not measured.** The centreline is real; how wide to stroke it is a choice.
+- **No lapped-car handling**, because the simulator models none.
+
+### Next
+
+The rest of P6: a strategy Gantt showing every stint, and the counterfactual fork — pause at any lap,
+change one decision, and watch the race diverge from itself. The fork is the interesting half and the
+simulator already supports it, since a race can be replayed under an imposed flag schedule.

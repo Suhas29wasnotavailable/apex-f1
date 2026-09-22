@@ -9,6 +9,7 @@ seed: 20260901
 paths:
   fastf1_cache: data/fastf1_cache
   processed: data/processed
+  tracks: data/tracks
   params: params
   figures: docs/figures
   mlruns: mlruns

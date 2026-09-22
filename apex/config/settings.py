@@ -55,6 +55,10 @@ class PathSettings(_Frozen):
 
     fastf1_cache: Path = Path("data/fastf1_cache")
     processed: Path = Path("data/processed")
+    tracks: Path = Path("data/tracks")
+    """Cached track geometry, one file per circuit. A property of the place rather than of a race,
+    which is why it is cached separately from either."""
+
     params: Path = Path("params")
     figures: Path = Path("docs/figures")
     mlruns: Path = Path("mlruns")

@@ -6,7 +6,7 @@
 UV ?= uv
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint format types test check clean ingest ingest-all laps calibrate race validate
+.PHONY: help setup lint format types test check clean ingest ingest-all laps calibrate race replay validate
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -49,6 +49,9 @@ calibrate: ## Fit every simulator parameter and write params/ and the calibratio
 
 race: ## Simulate one race from a grid and print the result
 	$(UV) run --extra data --extra fit apex race --circuit Monza --laps 53
+
+replay: ## Simulate a race and open a watchable top-down replay in the browser
+	$(UV) run --extra data --extra fit apex replay --circuit Monza --laps 53
 
 validate: ## Measure the simulator against the held-out races and print the error
 	$(UV) run --extra data --extra fit apex validate --per-race
