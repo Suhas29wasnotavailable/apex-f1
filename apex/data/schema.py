@@ -20,11 +20,13 @@ import polars as pl
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
+    "CIRCUIT_ALIASES",
     "LAP_SCHEMA",
     "SCHEMA_VERSION",
     "EventMeta",
     "ScheduledRace",
     "SessionRecord",
+    "canonical_circuit",
     "conform_lap_frame",
     "event_slug",
 ]
@@ -76,6 +78,37 @@ LAP_SCHEMA: Final[dict[str, pl.DataType]] = {
     "rainfall": pl.Boolean(),
 }
 """Canonical lap table: one row per driver per lap, in this order, with these types."""
+
+
+CIRCUIT_ALIASES: Final[dict[str, str]] = {
+    "Miami Gardens": "Miami",
+}
+"""Circuit names the timing feed reports inconsistently, mapped to one canonical name.
+
+The feed's location field is not stable across seasons. The Miami Grand Prix is reported at
+``"Miami"`` in some seasons and ``"Miami Gardens"`` in others, and because circuit is the key every
+per-circuit parameter is looked up by, that inconsistency is not cosmetic: it splits one circuit's
+races into two, so each half is fitted on less data than it has, and a season filed under the other
+spelling silently takes pooled values instead of its own. It surfaced as a missing baseline when the
+2025 Miami race was validated against parameters fitted from 2023 and 2024.
+
+Applied by :func:`conform_lap_frame`, which every path runs through -- so a race stored from now on
+carries the canonical name, and a race already on disk is canonicalised as it is read. That is what
+makes the fix free: no file has to be downloaded again for it to take effect, and the two paths
+cannot disagree about which name a circuit has.
+
+This is the one place where ingestion resolves rather than records, and it is worth being clear
+about why that is consistent. Ingestion's promise is to invent nothing and discard nothing; agreeing
+that two spellings of one place are one place does neither. No lap is filtered and no value imputed,
+and the mapping is data, listed here for a reader to check against the calendar.
+
+Keys are the variants; the value is the name every model and parameter file uses.
+"""
+
+
+def canonical_circuit(name: str) -> str:
+    """The canonical name for a circuit, resolving the feed's inconsistent spellings."""
+    return CIRCUIT_ALIASES.get(name, name)
 
 
 def event_slug(event: str) -> str:
@@ -179,4 +212,6 @@ def conform_lap_frame(frame: pl.DataFrame) -> pl.DataFrame:
         raise ValueError(f"lap frame is missing required columns: {missing}")
     return frame.select(
         pl.col(name).cast(dtype, strict=False) for name, dtype in LAP_SCHEMA.items()
+    ).with_columns(
+        pl.col("circuit").replace(CIRCUIT_ALIASES),
     )

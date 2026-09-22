@@ -19,6 +19,9 @@ from apex.calibrate.report import render_report
 from apex.config import AppSettings, get_settings
 from apex.data import SessionRecord, ingest_seasons, load_laps, manifest_frame
 from apex.data.sources import RateLimitError
+from apex.eval import validate_holdout
+from apex.sim import RaceSimulator, ReactiveRules, from_grid
+from apex.sim.scenario import AnchorMode
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="APEX -- F1 race digital twin.")
 
@@ -192,6 +195,142 @@ def params() -> None:
         typer.echo("No parameters fitted yet. Run `apex calibrate`.")
         raise typer.Exit(code=1)
     typer.echo(render_report(ParameterSet.read(path)))
+
+
+@app.command()
+def race(
+    *,
+    circuit: str = typer.Option(..., help="Circuit to race at, as the parameter file names it."),
+    laps: int = typer.Option(..., help="Race distance."),
+    season: int = typer.Option(
+        2025, help="Season, used to place the pace level on the fitted trend."
+    ),
+    drivers: str = typer.Option(
+        "VER,NOR,LEC,PIA,SAI,RUS,HAM,PER,ALO,STR", help="Starting grid, front to back."
+    ),
+    stops: int = typer.Option(1, help="Planned stops for the rule-based pit wall."),
+    episode: int = typer.Option(
+        0, help="Episode index; changes the race without changing the seed."
+    ),
+) -> None:
+    """Simulate one race from a grid and print the result.
+
+    Everything comes from `params/params.json`: the circuit's pace level, each car's pace from its
+    grid slot, tyre degradation, pit loss, the safety-car hazard and the passing model.
+    """
+    settings = get_settings()
+    path = params_path(settings)
+    if not path.is_file():
+        typer.echo("No parameters fitted yet. Run `apex calibrate`.")
+        raise typer.Exit(code=1)
+
+    parameters = ParameterSet.read(path)
+    grid = [name.strip().upper() for name in drivers.split(",") if name.strip()]
+    try:
+        scenario = from_grid(
+            parameters,
+            circuit=circuit,
+            season=season,
+            total_laps=laps,
+            grid=grid,
+            settings=settings,
+        )
+    except KeyError:
+        known = ", ".join(sorted(entry.circuit for entry in parameters.baseline.circuits))
+        typer.echo(f"No baseline fitted for circuit {circuit!r}.\nFitted circuits: {known}")
+        raise typer.Exit(code=1) from None
+
+    simulator = RaceSimulator(parameters, settings)
+    bundle = settings.seeds().derive("race").derive(circuit).episode(episode)
+    trace = simulator.run(scenario, ReactiveRules(target_stops=stops), bundle)
+
+    typer.echo(
+        f"{circuit} {season}, {laps} laps -- reference lap "
+        f"{scenario.anchor.reference_lap_s:.3f}s ({scenario.anchor.mode})"
+    )
+    if trace.safety_car_laps:
+        typer.echo(f"Safety car: laps {list(trace.safety_car_laps)}")
+    if trace.virtual_safety_car_laps:
+        typer.echo(f"Virtual safety car: laps {list(trace.virtual_safety_car_laps)}")
+    typer.echo(_table(trace.results_frame().drop("team")))
+    typer.echo(f"run_id={trace.seed_run_id}")
+
+
+@app.command()
+def validate(
+    free_runs: int = typer.Option(
+        0, help="Seeds per race in free mode. Zero runs replay mode only, which is much faster."
+    ),
+    limit: int | None = typer.Option(None, help="Validate only the first N holdout races."),
+    per_race: bool = typer.Option(False, help="Also print a row per race."),
+) -> None:
+    """Measure the simulator against the held-out races, and print the error.
+
+    This is the command that decides whether the project may call itself a digital twin. It refuses
+    to run if the parameter file was fitted on a season being validated, because then every number
+    it printed would be meaningless.
+    """
+    settings = get_settings()
+    typer.echo(
+        f"Validating on holdout seasons {list(settings.data.holdout_seasons)}; "
+        f"parameters fitted on {list(settings.data.train_seasons)}."
+    )
+    try:
+        report = validate_holdout(settings, free_runs=free_runs, limit=limit)
+    except ValueError as error:
+        typer.echo(f"\n{error}")
+        raise typer.Exit(code=1) from error
+
+    typer.echo(f"{report.n_races} races.\n")
+    header = (
+        f"{'mode':<22}{'posMAE':>8}{'grid':>8}"
+        f"{'spearman':>10}{'winner':>9}{'lapMAE':>9}{'gapMAE':>9}"
+    )
+    typer.echo(header)
+    typer.echo("-" * len(header))
+    for anchor in (AnchorMode.ANCHORED, AnchorMode.FITTED):
+        for source in ("grid", "oracle"):
+            summary = report.summary(anchor, pace_source=source)
+            if not summary:
+                continue
+            typer.echo(
+                f"{f'{anchor}/{source}':<22}"
+                f"{summary['position_mae']:>8.2f}"
+                f"{summary['grid_position_mae']:>8.2f}"
+                f"{summary['order_spearman']:>10.3f}"
+                f"{summary['winner_accuracy']:>8.0%}"
+                f"{summary['lap_time_mae_s']:>9.2f}"
+                f"{summary['finish_gap_mae_s']:>9.1f}"
+            )
+    typer.echo(
+        "\nposMAE is the twin's mean finishing-position error. `grid` is the same error for a model"
+        "\nthat predicts everybody finishes where they qualified -- the twin has to beat it to mean"
+        "\nanything. A row marked `oracle` was handed each car's true race pace: it is a diagnostic"
+        "\nand never a prediction, and its distance from `grid` is the cost of forecasting pace."
+    )
+
+    if per_race:
+        frame = report.replay_frame().filter(
+            (pl.col("anchor_mode") == str(AnchorMode.ANCHORED)) & (pl.col("pace_source") == "grid")
+        )
+        typer.echo(
+            "\n"
+            + _table(
+                frame.select(
+                    "event",
+                    "n_compared",
+                    "n_retired_excluded",
+                    "position_mae",
+                    "grid_position_mae",
+                    "order_spearman",
+                    "lap_time_mae_s",
+                    "finish_gap_mae_s",
+                ).sort("position_mae")
+            )
+        )
+
+    if report.free:
+        typer.echo("\n" + _table(report.free_frame()))
 
 
 if __name__ == "__main__":  # pragma: no cover

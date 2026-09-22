@@ -1,5 +1,151 @@
 {
   "$defs": {
+    "BaselineModel": {
+      "additionalProperties": false,
+      "description": "Absolute pace: where each circuit sits, how the seasons moved, how far a field spreads.",
+      "properties": {
+        "circuits": {
+          "items": {
+            "$ref": "#/$defs/CircuitBaseline"
+          },
+          "title": "Circuits",
+          "type": "array"
+        },
+        "seasons": {
+          "items": {
+            "$ref": "#/$defs/SeasonPace"
+          },
+          "title": "Seasons",
+          "type": "array"
+        },
+        "reference_season": {
+          "title": "Reference Season",
+          "type": "integer"
+        },
+        "season_trend_s": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Estimate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "field_spread_s": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "standing_start_s": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Estimate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "n_car_races": {
+          "minimum": 0,
+          "title": "N Car Races",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "circuits",
+        "seasons",
+        "reference_season",
+        "season_trend_s",
+        "field_spread_s",
+        "standing_start_s",
+        "n_car_races"
+      ],
+      "title": "BaselineModel",
+      "type": "object"
+    },
+    "CircuitBaseline": {
+      "additionalProperties": false,
+      "description": "The pace level of one circuit, in the reference season.",
+      "properties": {
+        "circuit": {
+          "title": "Circuit",
+          "type": "string"
+        },
+        "reference_lap_s": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "n_laps": {
+          "minimum": 0,
+          "title": "N Laps",
+          "type": "integer"
+        },
+        "n_races": {
+          "minimum": 0,
+          "title": "N Races",
+          "type": "integer"
+        },
+        "seasons": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Seasons",
+          "type": "array"
+        }
+      },
+      "required": [
+        "circuit",
+        "reference_lap_s",
+        "n_laps",
+        "n_races",
+        "seasons"
+      ],
+      "title": "CircuitBaseline",
+      "type": "object"
+    },
+    "CircuitOvertaking": {
+      "additionalProperties": false,
+      "description": "How hard it is to pass at one circuit, or pooled across all of them.",
+      "properties": {
+        "circuit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Circuit"
+        },
+        "difficulty": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "n_pairs": {
+          "minimum": 0,
+          "title": "N Pairs",
+          "type": "integer"
+        },
+        "n_passes": {
+          "minimum": 0,
+          "title": "N Passes",
+          "type": "integer"
+        },
+        "n_races": {
+          "minimum": 0,
+          "title": "N Races",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "difficulty",
+        "n_pairs",
+        "n_passes",
+        "n_races"
+      ],
+      "title": "CircuitOvertaking",
+      "type": "object"
+    },
     "CompoundDegradation": {
       "additionalProperties": false,
       "description": "How much lap time one compound loses as its tyres age, at one circuit or pooled.",
@@ -151,6 +297,52 @@
       "title": "ExclusionCount",
       "type": "object"
     },
+    "GridPaceModel": {
+      "additionalProperties": false,
+      "description": "Expected race pace as a function of starting position.",
+      "properties": {
+        "coefficients": {
+          "items": {
+            "$ref": "#/$defs/Estimate"
+          },
+          "minItems": 1,
+          "title": "Coefficients",
+          "type": "array"
+        },
+        "reference_field_size": {
+          "minimum": 2,
+          "title": "Reference Field Size",
+          "type": "integer"
+        },
+        "residual_std_s": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "n_car_races": {
+          "minimum": 0,
+          "title": "N Car Races",
+          "type": "integer"
+        },
+        "n_races": {
+          "minimum": 0,
+          "title": "N Races",
+          "type": "integer"
+        },
+        "r_squared": {
+          "title": "R Squared",
+          "type": "number"
+        }
+      },
+      "required": [
+        "coefficients",
+        "reference_field_size",
+        "residual_std_s",
+        "n_car_races",
+        "n_races",
+        "r_squared"
+      ],
+      "title": "GridPaceModel",
+      "type": "object"
+    },
     "Neutralisation": {
       "additionalProperties": false,
       "description": "The chance a neutralisation begins on any given green lap, at one circuit or pooled.",
@@ -228,6 +420,26 @@
             }
           ]
         },
+        "catch_up_s": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Estimate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lap_time_ratio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Estimate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "races_with_any": {
           "minimum": 0,
           "title": "Races With Any",
@@ -244,10 +456,70 @@
         "pooled",
         "circuits",
         "duration_laps",
+        "catch_up_s",
+        "lap_time_ratio",
         "races_with_any",
         "n_races"
       ],
       "title": "NeutralisationModel",
+      "type": "object"
+    },
+    "OvertakingModel": {
+      "additionalProperties": false,
+      "description": "The fitted passing model: one shared shape, one difficulty per circuit.",
+      "properties": {
+        "pooled": {
+          "$ref": "#/$defs/CircuitOvertaking"
+        },
+        "circuits": {
+          "items": {
+            "$ref": "#/$defs/CircuitOvertaking"
+          },
+          "title": "Circuits",
+          "type": "array"
+        },
+        "gap_coefficient": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "pace_coefficient": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "between_circuit_std": {
+          "title": "Between Circuit Std",
+          "type": "number"
+        },
+        "max_gap_s": {
+          "title": "Max Gap S",
+          "type": "number"
+        },
+        "n_pairs": {
+          "minimum": 0,
+          "title": "N Pairs",
+          "type": "integer"
+        },
+        "n_passes": {
+          "minimum": 0,
+          "title": "N Passes",
+          "type": "integer"
+        },
+        "n_races": {
+          "minimum": 0,
+          "title": "N Races",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pooled",
+        "circuits",
+        "gap_coefficient",
+        "pace_coefficient",
+        "between_circuit_std",
+        "max_gap_s",
+        "n_pairs",
+        "n_passes",
+        "n_races"
+      ],
+      "title": "OvertakingModel",
       "type": "object"
     },
     "PaceModel": {
@@ -380,6 +652,23 @@
         "excluded_under_safety_car": {
           "title": "Excluded Under Safety Car",
           "type": "integer"
+        },
+        "under_safety_car": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PitLoss"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "n_stops_under_safety_car": {
+          "default": 0,
+          "minimum": 0,
+          "title": "N Stops Under Safety Car",
+          "type": "integer"
         }
       },
       "required": [
@@ -414,7 +703,7 @@
           "type": "integer"
         },
         "schema_version": {
-          "default": 1,
+          "default": 2,
           "title": "Schema Version",
           "type": "integer"
         },
@@ -481,6 +770,31 @@
       ],
       "title": "SafetyCarModel",
       "type": "object"
+    },
+    "SeasonPace": {
+      "additionalProperties": false,
+      "description": "How much faster or slower a season was than the reference, averaged over circuits.",
+      "properties": {
+        "season": {
+          "title": "Season",
+          "type": "integer"
+        },
+        "offset_s": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "n_races": {
+          "minimum": 0,
+          "title": "N Races",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "season",
+        "offset_s",
+        "n_races"
+      ],
+      "title": "SeasonPace",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -518,6 +832,15 @@
     },
     "safety_car": {
       "$ref": "#/$defs/SafetyCarModel"
+    },
+    "baseline": {
+      "$ref": "#/$defs/BaselineModel"
+    },
+    "grid_pace": {
+      "$ref": "#/$defs/GridPaceModel"
+    },
+    "overtaking": {
+      "$ref": "#/$defs/OvertakingModel"
     }
   },
   "required": [
@@ -527,7 +850,10 @@
     "circuit_pace",
     "between_circuit_std",
     "pit_loss",
-    "safety_car"
+    "safety_car",
+    "baseline",
+    "grid_pace",
+    "overtaking"
   ],
   "title": "ParameterSet",
   "type": "object"

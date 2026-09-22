@@ -7,6 +7,7 @@ from apex.config.settings import (
     DataSettings,
     ExclusionSettings,
     PathSettings,
+    SimulationSettings,
     get_settings,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "DataSettings",
     "ExclusionSettings",
     "PathSettings",
+    "SimulationSettings",
     "get_settings",
 ]

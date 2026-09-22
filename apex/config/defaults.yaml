@@ -45,3 +45,15 @@ calibration:
     drop_fastf1_generated: true
     max_lap_time_ratio: 1.10
     min_clean_laps_per_stint: 4
+
+simulation:
+  # Modelling choices, not measurements. Changing any of these changes the config hash, so a
+  # simulated result always records the mechanics it was produced under.
+  min_following_gap_s: 0.7
+  bunched_gap_s: 1.4
+  max_catch_up_s: 18.0
+  pit_lane_reopens_after_lap: 1
+  min_stint_laps: 2
+  require_two_compounds: true
+  compounds: ["SOFT", "MEDIUM", "HARD"]
+  lap_time_noise: true

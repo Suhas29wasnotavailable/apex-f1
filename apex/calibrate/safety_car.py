@@ -6,8 +6,8 @@ seconds of pit loss when it comes -- that makes the problem stochastic, and stoc
 only condition under which reinforcement learning can earn its place here. A hazard rate that is
 wrong makes the entire comparison meaningless, in either direction.
 
-Full and virtual safety cars are estimated separately, because strategically they are opposites.
-A full safety car bunches the field and cuts the cost of a stop to almost nothing. A virtual one
+Full and virtual safety cars are estimated separately, because strategically they are opposites. A
+full safety car bunches the field and cuts the cost of a stop to almost nothing. A virtual one
 slows everybody in place and does neither. Averaging them into one "neutralisation" rate would
 produce a number that describes no real event.
 
@@ -37,7 +37,7 @@ import numpy as np
 import polars as pl
 from pydantic import BaseModel, ConfigDict, Field
 
-from apex.calibrate.estimates import Estimate
+from apex.calibrate.estimates import Estimate, bootstrap_median
 from apex.calibrate.pooling import partial_pool
 from apex.config import AppSettings, get_settings
 
@@ -51,6 +51,11 @@ __all__ = [
 
 FULL = "safety_car"
 VIRTUAL = "virtual_safety_car"
+
+_BUNCHED_THRESHOLD_S: Final = 3.0
+"""Gap above which a car on a neutralised lap counts as still closing on the queue rather than
+already in it. Comfortably wider than the queue's own spacing, so a car merely holding station is
+not counted as catching up."""
 
 _PSEUDO_COUNT: Final = 0.5
 """The Jeffreys prior's half a notional deployment and half a notional clear lap."""
@@ -90,6 +95,32 @@ class NeutralisationModel(BaseModel):
     """Mean laps a deployment lasts, pooled across circuits. The simulator needs this to know how
     long the pit-loss discount stays open. ``None`` when this kind of neutralisation never
     happened in the training seasons, which is a fact about the data rather than a duration."""
+
+    catch_up_s: Estimate | None
+    """How much faster than the neutralised cruising pace a car still closing on the queue runs.
+
+    A car caught out of position when the flags come out is not yet in the train, and it closes the
+    gap over a lap or two. How fast it may do that is the difference between a safety car that
+    scrambles the order and one that merely pauses the race, and it cannot be guessed: the
+    simulator's first attempt let a car close at its full racing pace, which validation exposed as
+    neutralised laps running eleven seconds a lap faster than reality. Measured here from cars that
+    were demonstrably still catching up -- more than :data:`_BUNCHED_THRESHOLD_S` behind the car
+    ahead on a neutralised lap -- against the neutralised pace of their own race. ``None`` when no
+    such lap exists.
+
+    Fitted from the training seasons like everything else, and deliberately not tuned against the
+    holdout. Choosing it to make the validation numbers look better would be fitting to the test
+    set, which is the one thing ADR-0002's split exists to prevent."""
+
+    lap_time_ratio: Estimate | None
+    """How much longer a neutralised lap takes than a green one, as a multiple.
+
+    The simulator cannot run a neutralisation without it: the field has to actually slow down, or a
+    safety car becomes a free pit stop with no cost to anybody and the strategy problem collapses.
+    Measured within each race -- the median neutralised lap time over the median green lap time of
+    the same race -- so a circuit's own lap length cancels instead of being averaged across a
+    calendar that ranges from seventy seconds to a hundred and eleven. ``None`` when this kind of
+    neutralisation never happened."""
 
     races_with_any: int = Field(ge=0)
     n_races: int = Field(ge=0)
@@ -279,8 +310,91 @@ def _fit_kind(
         pooled=pooled,
         circuits=circuits,
         duration_laps=duration,
+        catch_up_s=_catch_up(all_laps, codes, level, settings),
+        lap_time_ratio=_lap_time_ratio(all_laps, codes, level),
         races_with_any=int((per_race["starts"] > 0).sum()),
         n_races=n_races,
+    )
+
+
+def _catch_up(
+    all_laps: pl.DataFrame, codes: tuple[str, ...], level: float, settings: AppSettings
+) -> Estimate | None:
+    """How much faster than its race's neutralised pace a car still closing on the queue runs.
+
+    Compared against the neutralised pace of the same race rather than a calendar average, for the
+    same reason the lap-time ratio is: a second of closing means something different at Spa than at
+    the Red Bull Ring, and the race's own neutralised median removes the circuit.
+    """
+    matches = pl.any_horizontal(
+        [pl.col("track_status").fill_null("").str.contains(code, literal=True) for code in codes]
+    )
+    timed = all_laps.filter(
+        pl.col("lap_time_s").is_not_null() & ~pl.col("is_pit_in") & ~pl.col("is_pit_out")
+    ).with_columns(matches.alias("_neutralised"))
+
+    neutralised = timed.filter(pl.col("_neutralised"))
+    if neutralised.height == 0:
+        return None
+
+    pace = neutralised.group_by("race_id").agg(
+        pl.col("lap_time_s").median().alias("_neutralised_s")
+    )
+    catching = (
+        neutralised.join(pace, on="race_id", how="inner")
+        .filter(pl.col("gap_ahead_s") > _BUNCHED_THRESHOLD_S)
+        .with_columns((pl.col("_neutralised_s") - pl.col("lap_time_s")).alias("closed_s"))
+        .filter(pl.col("closed_s") > 0.0)
+    )
+    if catching.height == 0:
+        return None
+
+    rng = settings.seeds().derive("calibration").stream("safety_car_catch_up")
+    return bootstrap_median(catching["closed_s"].to_numpy().astype(np.float64), rng, level)
+
+
+def _lap_time_ratio(
+    all_laps: pl.DataFrame, codes: tuple[str, ...], level: float
+) -> Estimate | None:
+    """How many times longer a neutralised lap takes than a green lap of the same race.
+
+    Within-race ratios rather than a pooled difference in seconds, because a calendar spanning
+    seventy to a hundred and eleven seconds a lap has no meaningful average slowdown in seconds,
+    and it does have a meaningful one as a proportion.
+    """
+    matches = pl.any_horizontal(
+        [pl.col("track_status").fill_null("").str.contains(code, literal=True) for code in codes]
+    )
+    timed = all_laps.filter(
+        pl.col("lap_time_s").is_not_null() & ~pl.col("is_pit_in") & ~pl.col("is_pit_out")
+    ).with_columns(matches.alias("_neutralised"))
+
+    per_race = (
+        timed.group_by("race_id")
+        .agg(
+            pl.col("lap_time_s").filter(pl.col("_neutralised")).median().alias("neutralised_s"),
+            pl.col("lap_time_s")
+            .filter(pl.col("track_status").fill_null("") == "1")
+            .median()
+            .alias("green_s"),
+        )
+        .filter(
+            pl.col("neutralised_s").is_not_null()
+            & pl.col("green_s").is_not_null()
+            & (pl.col("green_s") > 0.0)
+        )
+    )
+    if per_race.height == 0:
+        return None
+
+    ratios = (per_race["neutralised_s"] / per_race["green_s"]).to_numpy().astype(np.float64)
+    if ratios.size == 1:
+        return Estimate(value=float(ratios[0]), level=level, n_obs=1)
+    return Estimate.from_standard_error(
+        float(np.median(ratios)),
+        float(ratios.std(ddof=1) / np.sqrt(ratios.size)),
+        n_obs=int(ratios.size),
+        level=level,
     )
 
 

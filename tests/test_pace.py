@@ -61,6 +61,13 @@ def simulated_race(
 
     Crossing times are built cumulatively down the field, so the gaps the features module later
     recovers from ``lap_end_s`` are exactly the gaps the lap times were generated from.
+
+    The running order is *derived*, not assigned: each car's position on a lap is its rank by
+    cumulative race time, and its grid position is its rank by true pace, which is what a
+    qualifying session would have produced. Both matter downstream. Without a running order no two
+    cars are ever adjacent and the overtaking model has nothing to measure; and because the order
+    emerges from lap times that differ by compound, degradation and pit lap, cars genuinely change
+    places over the race rather than swapping on a schedule.
     """
     slopes = degradation or TRUE_DEGRADATION
     compounds = list(slopes)
@@ -117,6 +124,41 @@ def simulated_race(
                     pit_out_s=crossing - 20.0 if is_out_lap else None,
                 )
             )
+    return _with_running_order(rows, pace)
+
+
+def _with_running_order(
+    rows: list[dict[str, object]], pace: dict[int, float]
+) -> list[dict[str, object]]:
+    """Assign each lap a position by cumulative race time, and each car a grid slot by true pace.
+
+    Position is the rank of the car's elapsed time, which is what a running order is. It is
+    computed here rather than in the generator because a car's rank depends on every other car's
+    lap, so it cannot be known while the laps are still being built one at a time.
+    """
+    grid = {
+        index: position
+        for position, (index, _) in enumerate(sorted(pace.items(), key=lambda item: item[1]), 1)
+    }
+    elapsed: dict[str, float] = {}
+    by_lap: dict[int, list[dict[str, object]]] = {}
+    for row in rows:
+        driver = str(row["driver"])
+        elapsed[driver] = elapsed.get(driver, 0.0) + float(row["lap_time_s"])  # type: ignore[arg-type]
+        row["_elapsed"] = elapsed[driver]
+        by_lap.setdefault(int(row["lap"]), []).append(row)  # type: ignore[call-overload]
+
+    def elapsed_of(entry: dict[str, object]) -> float:
+        value = entry["_elapsed"]
+        assert isinstance(value, float)
+        return value
+
+    for laps_together in by_lap.values():
+        for position, row in enumerate(sorted(laps_together, key=elapsed_of), 1):
+            row["position"] = position
+    for row in rows:
+        del row["_elapsed"]
+        row["grid_position"] = grid[int(str(row["driver"])[1:])]
     return rows
 
 

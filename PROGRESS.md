@@ -198,3 +198,170 @@ metrics against races the calibration never saw.
 - **Which Grand Prix is the flagship demo?** Unchanged from P0: best chosen in P2 from the
   held-out set, once it is visible which races the twin reproduces well.
 - **Redistribution of derived F1 data.** Unchanged from P0, and still worth settling before P7.
+
+---
+
+## P2 — Simulator and validation — ✅ complete (2026-09-22)
+
+### Shipped
+
+- **`apex.sim`** — an event-driven, lap-discrete, multi-car race simulator that reads nothing but
+  `params/params.json`. A scenario in, a lap-by-lap `RaceTrace` out: positions, gaps, tyre state,
+  flags, stints and a classification. Determinism is a tested property, not a hope.
+- **`apex.eval`** — the validation protocol: real races reduced to the simulator's own vocabulary,
+  the metrics that score one against the other, and the runner over the held-out season.
+- **Three new fitted models**, because P1's estimator had no reason to publish them and a simulator
+  cannot run without them: `baseline` (the absolute pace level the car-race fixed effects absorbed,
+  split into circuit and season, plus the standing-start penalty), `grid_pace` (race pace from
+  starting position, so a field can be built from pre-race information alone), and `overtaking`
+  (pass probability, with per-circuit difficulty). Parameter schema is now version 2.
+- **Two numbers P1 listed as missing or wrong**, now measured: pit loss under a safety car, and the
+  neutralised lap-time ratio and closing rate.
+- **The strategy seam P3 and P4 plug into** — `CarView` in, `PitCall` or nothing out — plus two
+  rule-based baselines to be beaten.
+- **CLI**: `apex race`, `apex validate`; `make race`, `make validate`.
+- **226 tests**, all green, up from 165.
+
+### What the data says
+
+Fitted from the same 56 dry races of 2022–24. The new parameters, each with a 95% interval in
+`docs/calibration_report.md`:
+
+| Parameter | Estimate |
+|---|---|
+| Circuit pace level | 69.9 s at Spielberg to 110.8 s at Spa-Francorchamps |
+| Season trend | −1.21 s per lap per season; 2022 cars 2.42 s slower than 2024 |
+| Standing start | +7.86 s [7.09, 8.56] over a flying lap, from 31 green starts |
+| Grid position → race pace | pole −1.05 s to P20 +0.49 s; r² 0.51, residual 0.47 s |
+| Field spread | 0.66 s standard deviation of car pace within a race |
+| Pit loss under a safety car | **14.3 s against 22.7 s green — a 8.4 s discount**, from 484 stops |
+| Safety car lap / closing rate | 1.358× a green lap; closes at most 14.1 s per lap |
+| Virtual safety car lap / closing | 1.232×; closes at most 9.3 s per lap |
+| Overtaking, pooled | 4.6% of adjacent pairs pass per lap, from 35,246 pairs |
+| Overtaking, spread | Monaco 0.58%, Zandvoort 2.7%, Las Vegas 10.5% |
+
+The overtaking model is the one place per-circuit estimates are strong on their own: every lap
+contributes roughly twenty adjacent pairs, so between-circuit spread is 1.43 on the log-odds scale
+and clearly non-zero — against exactly zero for the safety-car hazard. Monaco is eighteen times
+harder to pass at than Las Vegas, which is the correct answer and one P1 had no way to produce.
+
+### What the validation says — including that it is not good enough yet
+
+21 held-out 2025 races, replay mode: real grid, real pit stops, real safety cars, simulated racing.
+18.1 classified finishers compared per race, 1.7 retirements excluded.
+
+| Mode | Position MAE | Grid baseline | Spearman | Winner | Podium | Lap MAE | Gap MAE |
+|---|---|---|---|---|---|---|---|
+| Anchored pace level | 2.86 | **2.40** | 0.749 | 48% | 2.00 / 3 | 2.39 s | 21.0 s |
+| Predicted pace level | 2.71 | **2.40** | 0.755 | 52% | 2.19 / 3 | 2.99 s | 20.4 s |
+| *Oracle car pace (leakage)* | *2.53* | *2.40* | *0.785* | *48%* | *2.29 / 3* | *2.37 s* | *18.6 s* |
+
+**The twin does not beat the grid baseline on mean finishing position.** Predicting that everybody
+finishes where they qualified scores 2.40; the twin scores 2.86, and wins on only 5 of 21 races.
+That is the headline P2 result and it is published rather than buried.
+
+What the twin *does* do: rank correlation 0.749, the right winner in half the races, 8.1 of the real
+top ten in its own top ten, and green-flag lap times that are essentially unbiased — **mean error
++0.14 s over 21,611 green laps**, against a fitted residual scale of 0.66 s. It reproduces a race's
+texture; it does not yet reproduce which particular cars move.
+
+The diagnosis is specific rather than a shrug. Reality churns the order slightly *more* than the
+simulator does — mean 2.75 places from the grid against 2.52 — so the twin is not over-shuffling. It
+shuffles roughly the right amount and shuffles **different cars**, and two uncorrelated shuffles of
+that size produce almost exactly the error observed. The causes reality churns for are retirements,
+damage and driver error, none of which has a parameter in this model. The oracle row bounds how much
+of the rest is the pace forecast: handed each car's true race pace, position error falls to 2.53 and
+gap error to 18.6 s, still only level with the baseline.
+
+### What broke
+
+- **Bunching a field instantaneously produced four-second laps.** Closing the whole gap to the queue
+  in one step handed cars time nobody drove; the recorded lap absorbed the compression. Fixed by
+  bounding how fast a gap can close — then fixed *again*, because bounding it by each car's racing
+  pace is still illegal under a neutralisation and left neutralised laps 11 s a lap too fast against
+  green laps that were unbiased. The closing rate is now a fitted parameter.
+- **One strategy object served twenty cars and shared its stop counter.** The first car to pit
+  consumed the plan for the entire field; nineteen never stopped, and the two-compound safety net
+  dragged them all into the pit lane on the penultimate lap. Strategies are now stateless functions
+  of the view, which is also what an RL policy is, and the protocol says so.
+- **The timing feed calls one circuit two different things.** Miami is `"Miami"` in some seasons and
+  `"Miami Gardens"` in others. Circuit is the key every per-circuit parameter is looked up by, so
+  this split one circuit's races in half and sent 2025 to the pooled values. It surfaced as a crash
+  on a missing baseline, which is the lucky version; the quiet version is worse.
+- **Pit loss under a safety car measured 65 s, three times the green-flag figure.** The green method
+  compares the in- and out-laps against the driver's own green neighbours, so it charges the entire
+  safety-car slowdown to the stop. Measured against the cars that stayed out instead, it is 14.3 s.
+  The first number would have told the simulator to never stop under a safety car.
+- **Finishing gaps were compared across cars that ran different numbers of laps.** A car one lap down
+  has 57 lap times where the winner has 58, so differencing the sums mixes "slower" with "shorter".
+  It inflated the reported gap error from 18.6 s to 35.9 s — the twin looked twice as wrong as it was.
+- **The overtaking model was first fitted on whole-race pace.** That makes the undercut invisible: a
+  car passes three rivals out of the pit lane because its tyres are fifteen laps younger, not because
+  the car improved. Refitting on tyre-adjusted instantaneous pace strengthened the coefficient from
+  1.88 to 2.20 and moved the hardest circuits to Monaco, Zandvoort, Marina Bay and Imola — all
+  genuinely narrow tracks.
+- **A standing start costs 7.9 s and the simulator was not charging it.** The exclusion rules drop
+  opening laps for good reasons, so no fitted parameter covered lap one, and every simulated race
+  finished several seconds early. Its first interval was ±46 s, because a median of a heavy-tailed
+  sample was given a normal standard error and races that began under a safety car were included.
+- **Validation was reproducible within a process and not between processes.** Lapped cars have no
+  position on the leader's final lap and no quoted race time, so the fallback that orders them
+  compared several infinities and left a stable sort preserving the iteration order of a *set* --
+  which Python hashes differently in every run. Position error moved in the second decimal place
+  between runs of the same command. This is precisely the failure ADR-0004 exists to prevent, and it
+  slipped in above the seeding layer, where the seed bundle offers no protection.
+- **The test fixture had no running order at all.** Every simulated lap carried `position=1`, so no
+  two cars were ever adjacent and the overtaking model had nothing to fit. Positions now emerge from
+  cumulative race time and grid slots from true pace, which is what a race weekend produces.
+
+### Verified by evidence
+
+- Every new estimator is checked against races built from known parameters, the same discipline P1
+  used: the circuit baseline recovers the lap time it was generated from, a circuit generated 10 s
+  slower is reported 10 s slower, a season-wide offset lands in the season effect rather than in the
+  circuits, and the logistic estimator recovers coefficients it was given.
+- The tyre term is asserted to be computed identically by calibration and simulation, because the
+  overtaking coefficient is fitted on the difference it produces and the simulator evaluates that
+  same difference every lap.
+- Determinism is tested as a property: a seed reproduces a race exactly, different seeds do not, and
+  simulating other races first changes nothing — ADR-0004's promise at whole-race scale.
+- Lap times are asserted to be physical under every flag, and the hand-computable opening lap is
+  asserted against the sum of its fitted effects.
+- `apex validate` refuses to run if the parameter file was fitted on a season being validated.
+
+### Still assumed (not yet evidence)
+
+- **No retirements, lapped traffic, damage, driver error, weather change or tyre temperature.** Each
+  is absent because no fitted parameter supports it. This is why validation compares classified
+  finishers only, and it is the leading candidate for the unexplained position error.
+- **A pass takes effect from the next lap**, so a car cannot pass two rivals on one lap.
+- **Yellow-flag laps are not modelled.** They are 3.8% of car-laps and the simulator runs them green,
+  which is a measured and unfixed source of optimism in race time.
+- **Neutralised laps are still 6.2 s a lap too fast**, against green laps biased by +0.14 s. Two
+  corrections have already closed most of the original 10.9 s and the residue is real: the queue's
+  behaviour is modelled by one closing rate and one lap-time ratio, when the first lap of a
+  deployment is far slower than the fourth. Fitting the ratio per lap-of-deployment is the obvious
+  next step and needs more neutralisations than 56 races supply.
+- **The grid slot spacing of 0.25 s is a modelling choice, not a measurement** — the only one in the
+  simulator that is neither fitted nor configured. Lap one is the one lap the pace model cannot
+  speak to.
+- **The season trend is extrapolated to 2025 from three seasons.** The predicted-pace column carries
+  that extrapolation, which is why lap-time error there is 2.99 s against 2.39 s anchored.
+
+### Next — P3
+
+Classical baselines on this simulator: rule-based, dynamic programming, MCTS. The dynamic-programming
+solution is the important one, because the project's central claim is that it makes reinforcement
+learning unnecessary under deterministic dynamics. Improving the twin's position error is a parallel
+track, and the two most promising leads are both measured above: model retirements, and give the
+field better pre-race pace than a grid slot alone.
+
+### Open questions
+
+- **Which Grand Prix is the flagship demo?** Now answerable from evidence. Suzuka is reproduced best
+  (position MAE 1.3) and Monaco worst (4.56), which is the sport's own reputation for both.
+- **Does the position error close with a retirement model?** Retirements are ~1.7 cars a race and are
+  the largest single unmodelled cause of order change. Worth trying before anything subtler.
+- **Should the two-compound rule be enforced or priced?** It is currently enforced by a safety net
+  that stops a car on the penultimate lap. A real penalty would let an agent weigh the trade.
+- **Redistribution of derived F1 data.** Unchanged since P0, and still worth settling before P7.

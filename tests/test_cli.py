@@ -15,6 +15,7 @@ from apex.config import get_settings
 from apex.data.ingest import summarise, write_race
 from apex.data.sources import to_lap_frame
 from tests.factories import raw_lap, raw_race
+from tests.test_sim import CIRCUIT, parameters
 
 runner = CliRunner()
 
@@ -110,3 +111,49 @@ def test_params_explains_itself_before_anything_is_fitted(store: Path) -> None:
     assert monkeypatched.exit_code == 1
     assert "apex calibrate" in monkeypatched.stdout
     assert store.exists()
+
+
+def test_race_explains_itself_before_anything_is_fitted(store: Path) -> None:
+    result = runner.invoke(app, ["race", "--circuit", "Monza", "--laps", "53"])
+    assert result.exit_code == 1
+    assert "apex calibrate" in result.stdout
+    assert store.exists()
+
+
+def test_race_names_the_circuits_it_knows_when_asked_for_one_it_does_not(store: Path) -> None:
+    """An unfitted circuit is a question the parameter file can answer, so it answers it."""
+    written = _write_parameters(store)
+    result = runner.invoke(app, ["race", "--circuit", "Nowhere", "--laps", "10"])
+    assert result.exit_code == 1
+    assert "No baseline fitted" in result.stdout
+    assert written in result.stdout
+
+
+def test_race_simulates_the_grid_it_is_given(store: Path) -> None:
+    circuit = _write_parameters(store)
+    result = runner.invoke(
+        app,
+        ["race", "--circuit", circuit, "--laps", "12", "--drivers", "AAA,BBB,CCC"],
+    )
+    assert result.exit_code == 0, result.stdout
+    for driver in ("AAA", "BBB", "CCC"):
+        assert driver in result.stdout
+    assert "run_id=" in result.stdout
+
+
+def test_validate_refuses_when_the_parameters_saw_the_holdout(store: Path) -> None:
+    """The one check that makes every published metric meaningful."""
+    _write_parameters(store, seasons=(2022, 2023, 2024, 2025))
+    result = runner.invoke(app, ["validate"])
+    assert result.exit_code == 1
+    assert "recalibrate" in result.stdout
+
+
+def _write_parameters(store: Path, seasons: tuple[int, ...] = (2022, 2023, 2024)) -> str:
+    """Write a minimal parameter file into the temporary store, and name its circuit."""
+    params = parameters()
+    params = params.model_copy(
+        update={"provenance": params.provenance.model_copy(update={"seasons": seasons})}
+    )
+    params.write(store / "params" / "params.json")
+    return CIRCUIT

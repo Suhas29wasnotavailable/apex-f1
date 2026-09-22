@@ -6,7 +6,7 @@
 UV ?= uv
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint format types test check clean ingest ingest-all laps calibrate
+.PHONY: help setup lint format types test check clean ingest ingest-all laps calibrate race validate
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -46,6 +46,12 @@ laps: ## Report what the exclusion rules keep, and what they cost
 
 calibrate: ## Fit every simulator parameter and write params/ and the calibration report
 	$(UV) run --extra data --extra fit apex calibrate
+
+race: ## Simulate one race from a grid and print the result
+	$(UV) run --extra data --extra fit apex race --circuit Monza --laps 53
+
+validate: ## Measure the simulator against the held-out races and print the error
+	$(UV) run --extra data --extra fit apex validate --per-race
 
 clean: ## Remove caches and build artefacts, but never downloaded race data
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .hypothesis htmlcov .coverage

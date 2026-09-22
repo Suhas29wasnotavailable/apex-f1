@@ -28,7 +28,7 @@ from pydantic_settings import (
 
 from apex.seeding import SeedBundle
 
-__all__ = ["PROJECT_ROOT", "AppSettings", "get_settings"]
+__all__ = ["PROJECT_ROOT", "AppSettings", "SimulationSettings", "get_settings"]
 
 PROJECT_ROOT: Final[Path] = Path(
     os.environ.get("APEX_PROJECT_ROOT", Path(__file__).resolve().parents[2])
@@ -199,6 +199,56 @@ class CalibrationSettings(_Frozen):
     this project is quietly narrower than another."""
 
 
+class SimulationSettings(_Frozen):
+    """Mechanics of the race simulator that no fitted parameter determines.
+
+    Everything here is a modelling choice rather than a measurement, which is exactly why it lives
+    in configuration and is hashed into the provenance of every simulated result. A reader who
+    disagrees with a number here can change it and re-run; a reader who cannot see it has to take
+    the simulator on trust.
+    """
+
+    min_following_gap_s: float = Field(default=0.7, gt=0.0)
+    """How close a car sits behind one it cannot pass. The cost of failing to overtake: a car held
+    up loses the time it would have gained, which is what makes track position worth having."""
+
+    bunched_gap_s: float = Field(default=1.4, gt=0.0)
+    """Gap the field closes to behind a deployed safety car. A virtual safety car deliberately does
+    not bunch -- that difference is most of why the two are strategically opposite."""
+
+    max_catch_up_s: float = Field(default=14.0, gt=0.0)
+    """Fallback for how much a car may close on the one ahead in a single neutralised lap.
+
+    Used only when the parameter file carries no fitted value. The fitted one is preferred, and
+    measured per kind of neutralisation from the training seasons, because this number decides
+    whether a safety car reshuffles the order or merely pauses the race, and should not be a guess.
+
+    Cars behind a safety car are held to a delta and are not racing, so a gap closes over a lap or
+    two rather than instantly. The first version of the simulator bounded the closing rate by each
+    car's own *racing* pace instead, which is both illegal under a neutralisation and far too quick:
+    validation against the held-out races found neutralised laps running eleven seconds a lap faster
+    than reality, against green-flag laps that were unbiased."""
+
+    pit_lane_reopens_after_lap: int = Field(default=1, ge=0)
+    """Laps into a race before a stop is allowed, so a strategy cannot pit on the grid."""
+
+    min_stint_laps: int = Field(default=2, ge=1)
+    """Shortest stint a strategy may run. Without a floor, an agent can discover that stopping on
+    consecutive laps games the two-compound rule at almost no cost, which is not a real option."""
+
+    require_two_compounds: bool = True
+    """Enforce the sporting regulation that a dry race must be run on two different compounds. It
+    is the single constraint that makes the strategy problem non-trivial: without it the answer is
+    always to run the fastest tyre and never stop."""
+
+    compounds: tuple[str, ...] = ("SOFT", "MEDIUM", "HARD")
+    """Compounds available. Must be a subset of the compounds the pace model fitted."""
+
+    lap_time_noise: bool = True
+    """Draw per-lap noise at the fitted residual scale. Switching it off makes a race deterministic
+    given its safety cars, which is exactly the condition the project's central claim is about."""
+
+
 class AppSettings(BaseSettings):
     """Top-level configuration object."""
 
@@ -215,6 +265,7 @@ class AppSettings(BaseSettings):
     paths: PathSettings = PathSettings()
     data: DataSettings = DataSettings()
     calibration: CalibrationSettings = CalibrationSettings()
+    simulation: SimulationSettings = SimulationSettings()
 
     @classmethod
     def settings_customise_sources(

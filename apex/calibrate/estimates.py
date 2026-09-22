@@ -17,10 +17,14 @@ from __future__ import annotations
 import math
 from typing import Final
 
+import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
 from scipy import stats
 
-__all__ = ["Estimate", "critical_value"]
+__all__ = ["BOOTSTRAP_RESAMPLES", "Estimate", "bootstrap_median", "critical_value"]
+
+BOOTSTRAP_RESAMPLES: Final = 2000
+"""Enough that a percentile interval is stable to about a hundredth of a second, and cheap here."""
 
 _MIN_DEGREES_OF_FREEDOM: Final = 1
 
@@ -111,3 +115,32 @@ class Estimate(BaseModel):
             else f"[{self.interval[0]:+.4f}, {self.interval[1]:+.4f}]"
         )
         return f"{self.value:+.4f} {spread} {bounds} n={self.n_obs}"
+
+
+def bootstrap_median(values: np.ndarray, rng: np.random.Generator, level: float) -> Estimate | None:
+    """Median with a percentile interval from a seeded resample.
+
+    The right estimator wherever the quantity is a median of a heavy-tailed sample -- a pit stop
+    that went wrong, a race red-flagged on the opening lap -- because the median resists those and a
+    standard error computed as though the sample were normal does not. Using one on a
+    standing-start penalty produced a point estimate of eight seconds inside an interval a hundred
+    seconds wide, which is a statement about outliers rather than about starts.
+
+    Returns ``None`` for an empty sample, and for a single observation an estimate carrying no claim
+    of precision rather than a bootstrap interval of zero width.
+    """
+    if values.size == 0:
+        return None
+    if values.size == 1:
+        return Estimate(value=float(values[0]), level=level, n_obs=1)
+    draws = rng.integers(0, values.size, size=(BOOTSTRAP_RESAMPLES, values.size))
+    medians = np.median(values[draws], axis=1)
+    tail = (1.0 - level) / 2.0
+    low, high = np.quantile(medians, [tail, 1.0 - tail])
+    return Estimate(
+        value=float(np.median(values)),
+        std_error=float(np.std(medians, ddof=1)),
+        interval=(float(low), float(high)),
+        level=level,
+        n_obs=int(values.size),
+    )

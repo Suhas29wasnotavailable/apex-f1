@@ -17,21 +17,25 @@ from apex.data.ingest import (
     record_path,
 )
 from apex.data.schema import (
+    CIRCUIT_ALIASES,
     LAP_SCHEMA,
     SCHEMA_VERSION,
     EventMeta,
     ScheduledRace,
     SessionRecord,
+    canonical_circuit,
     conform_lap_frame,
     event_slug,
 )
 
 __all__ = [
+    "CIRCUIT_ALIASES",
     "LAP_SCHEMA",
     "SCHEMA_VERSION",
     "EventMeta",
     "ScheduledRace",
     "SessionRecord",
+    "canonical_circuit",
     "conform_lap_frame",
     "event_slug",
     "ingest_race",
