@@ -1,5 +1,24 @@
 # APEX — a digital twin of a Formula 1 race
 
+[![CI](https://github.com/Suhas29wasnotavailable/apex-f1/actions/workflows/ci.yml/badge.svg)](https://github.com/Suhas29wasnotavailable/apex-f1/actions/workflows/ci.yml)
+[![Watch the replay](https://img.shields.io/badge/replay-watch_the_2025_season-e10600)](https://suhas29wasnotavailable.github.io/apex-f1/)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
+[![Silverstone, lap 33 of 52: twenty cars on the real circuit outline beside a live timing tower](docs/assets/replay-silverstone.jpg)](https://suhas29wasnotavailable.github.io/apex-f1/)
+
+<sub>Silverstone, lap 33 of 52, simulated from the fitted parameters on the circuit traced from real
+telemetry. **[Watch any of the 25 circuits in the browser →](https://suhas29wasnotavailable.github.io/apex-f1/)**</sub>
+
+### At a glance
+
+| | |
+|---|---|
+| **Fitted from** | 56 dry races at 25 circuits, 2022–2024 (50,583 laps), every parameter with a 95% interval |
+| **Tested on** | the 21 dry races of 2025, held out from every fitted number |
+| **Lap times** | essentially unbiased: mean error +0.14 s across 21,611 green laps |
+| **Finishing order** | **loses to the grid baseline**: 2.86 places of error against 2.40, better in 5 of 21 races |
+| **RL vs dynamic programming** | not measured yet. The baselines (P3) come first, then the PPO agent (P4) |
+
 **The claim this repository exists to test:**
 
 > Under deterministic dynamics, Formula 1 race strategy is a small enough MDP that dynamic
@@ -172,6 +191,7 @@ make calibrate   # fit every parameter, write params/ and the calibration report
 make race        # simulate one race from a grid and print the result
 make tracks      # trace every circuit's outline from real telemetry, once
 make replay      # simulate the calendar and open a watchable top-down replay
+make publish     # rebuild that replay and publish it to GitHub Pages
 make validate    # measure the simulator against the held-out races and print the error
 ```
 
