@@ -16,7 +16,8 @@ setup: ## Create the Python 3.11 environment and install git hooks
 	@command -v $(UV) >/dev/null 2>&1 || { \
 		echo "uv not found. Install it: curl -LsSf https://astral.sh/uv/install.sh | sh"; \
 		exit 1; }
-	$(UV) sync --group dev
+	# The tests import the ingestion and fitting code, so its extras are part of a dev setup.
+	$(UV) sync --group dev --extra data --extra fit
 	$(UV) run pre-commit install
 
 lint: ## Check style and import order
@@ -31,7 +32,7 @@ types: ## Type-check under mypy strict
 	$(UV) run mypy
 
 test: ## Run the test suite, excluding anything that needs the network
-	$(UV) run pytest -m "not network"
+	$(UV) run --extra data --extra fit pytest -m "not network"
 
 check: lint types test ## Everything CI runs
 

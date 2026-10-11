@@ -1,45 +1,26 @@
 name: CI
 
+# The same gate as `make check`: lint, strict types, and every test that runs offline.
 on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   check:
-    name: lint, types, tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
-          cache-dependency-glob: uv.lock
-
-      # --locked fails if uv.lock is stale, so a dependency change cannot land unlocked.
-      # The `fit` extra is installed because the calibration tests check the project's own
-      # fixed-effects estimator against statsmodels. That comparison is the reason to believe
-      # any fitted number, so it belongs in CI rather than on one developer's machine.
-      - name: Install dependencies
-        run: uv sync --extra fit --group dev --locked
-
+      - name: Install (Python from .python-version, locked dependencies)
+        run: uv sync --frozen --group dev --extra data --extra fit
       - name: Lint
-        run: uv run ruff check --output-format=github .
-
-      - name: Format
-        run: uv run ruff format --check .
-
-      - name: Types
-        run: uv run mypy
-
-      # CI has no access to the F1 timing API. Tests that need real data are marked `network`
-      # and run locally; committed fixtures cover the same code paths here.
-      - name: Tests
-        run: uv run pytest -m "not network" --cov=apex --cov-report=term-missing
+        run: |
+          uv run --frozen ruff check .
+          uv run --frozen ruff format --check .
+      - name: Types (mypy strict)
+        run: uv run --frozen mypy
+      - name: Tests (offline)
+        run: uv run --frozen pytest -m "not network"
