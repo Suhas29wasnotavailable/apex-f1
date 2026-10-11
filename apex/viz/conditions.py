@@ -118,7 +118,9 @@ def _series(frame: pl.DataFrame, column: str, total_laps: int) -> tuple[float, .
     """
     per_lap = (
         frame.group_by("lap")
-        .agg(pl.col(column).mean().alias("value"))
+        # Sorted first: float sums depend on order, the rows of a lap arrive in no fixed order, and
+        # a mean on a rounding boundary then printed 31.6 on one build and 31.7 on the next.
+        .agg(pl.col(column).sort().mean().alias("value"))
         .drop_nulls("value")
         .sort("lap")
     )
@@ -170,7 +172,9 @@ def circuit_conditions(
         .filter(pl.col("compound") != "")
         .group_by("compound")
         .agg(pl.len().alias("laps"))
-        .sort("laps", descending=True)
+        # group_by returns groups in no particular order, so ties need a key of their own or the
+        # page differs from one build to the next.
+        .sort(["laps", "compound"], descending=[True, False])
     )
     teams = (
         race.drop_nulls(["team", "speed_trap_kph"])
@@ -180,7 +184,7 @@ def circuit_conditions(
             pl.col("driver").unique().sort().alias("drivers"),
             pl.len().alias("n_laps"),
         )
-        .sort("trap", descending=True)
+        .sort(["trap", "team"], descending=[True, False])
     )
 
     rain = race["rainfall"].drop_nulls()

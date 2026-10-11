@@ -16,10 +16,13 @@ from typing import Any
 
 import pytest
 
+import apex.viz.conditions as conditions_module
 from apex.sim import RaceSimulator, ReactiveRules, from_grid
+from apex.viz.conditions import circuit_conditions
 from apex.viz.page import render_page, season_payload, write_page
 from apex.viz.replay import COMPOUND_COLOURS, TEAM_COLOURS, replay_payload
 from apex.viz.track import CENTRELINE_POINTS, PROFILE_SAMPLES, TrackGeometry, track_payload
+from tests import factories
 from tests.test_sim import CIRCUIT, bundle, parameters, settings
 
 
@@ -265,6 +268,33 @@ def test_conditions_are_absent_rather_than_invented_when_nothing_is_ingested() -
     neither produced nor can act on, which is the one thing this panel must never do.
     """
     assert race_payload()["conditions"] is None
+
+
+def test_tied_readings_are_listed_in_the_same_order_on_every_build(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two teams level on the speed trap must not swap places between builds.
+
+    ``group_by`` hands groups back in no particular order, so without a tie-breaker the page came
+    out different each time it was regenerated: Haas and Red Bull, both on 308 km/h at one circuit,
+    traded places. The replay is published as a file, so that meant a diff on every rebuild.
+    """
+    rows = [
+        factories.lap(driver="ZZZ", team="Zeta", speed_trap_kph=308.0, compound="HARD", lap=1),
+        factories.lap(driver="AAA", team="Alpha", speed_trap_kph=308.0, compound="MEDIUM", lap=2),
+        factories.lap(driver="MMM", team="Mid", speed_trap_kph=310.0, compound="SOFT", lap=3),
+    ]
+    seen = []
+    for ordering in (rows, rows[::-1], [rows[1], rows[2], rows[0]]):
+        frame = factories.lap_frame(ordering)
+        monkeypatch.setattr(conditions_module, "load_laps", lambda *_a, frame=frame, **_k: frame)
+        recorded = circuit_conditions("Testville", season=2023, settings=settings())
+        assert recorded is not None
+        seen.append(([t.team for t in recorded.teams], [c for c, _ in recorded.compounds]))
+
+    assert all(entry == seen[0] for entry in seen)
+    assert seen[0][0] == ["Mid", "Alpha", "Zeta"]
+    assert seen[0][1] == ["HARD", "MEDIUM", "SOFT"]
 
 
 def test_no_placeholder_survives_into_the_page() -> None:
