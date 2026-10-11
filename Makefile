@@ -6,7 +6,7 @@
 UV ?= uv
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint format types test check clean ingest ingest-all laps calibrate race tracks replay validate
+.PHONY: help setup lint format types test check clean ingest ingest-all laps calibrate race tracks replay publish validate
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -56,6 +56,9 @@ tracks: ## Trace every fitted circuit's outline from real telemetry, once
 
 replay: ## Simulate the whole calendar and open a watchable top-down replay
 	$(UV) run --extra data --extra fit apex replay
+
+publish: ## Build the season replay and publish it to GitHub Pages
+	./scripts/publish_replay.sh
 
 validate: ## Measure the simulator against the held-out races and print the error
 	$(UV) run --extra data --extra fit apex validate --per-race
