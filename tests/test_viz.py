@@ -19,7 +19,7 @@ import pytest
 import apex.viz.conditions as conditions_module
 from apex.sim import RaceSimulator, ReactiveRules, from_grid
 from apex.viz.conditions import circuit_conditions
-from apex.viz.page import render_page, season_payload, write_page
+from apex.viz.page import OPENING_CIRCUIT, render_page, season_payload, write_page
 from apex.viz.replay import COMPOUND_COLOURS, TEAM_COLOURS, replay_payload
 from apex.viz.track import CENTRELINE_POINTS, PROFILE_SAMPLES, TrackGeometry, track_payload
 from tests import factories
@@ -207,7 +207,7 @@ def test_the_page_embeds_the_payload_and_parses_back() -> None:
     payload = race_payload()
     recovered = embedded(render_page(payload))
     # A lone race is wrapped, so the page only ever has one shape to read.
-    assert list(recovered) == ["title", "races"]
+    assert list(recovered) == ["title", "races", "opening"]
     assert len(recovered["races"]) == 1
     race = recovered["races"][0]
     assert race["totalLaps"] == payload["totalLaps"]
@@ -223,6 +223,20 @@ def test_several_races_travel_in_one_page() -> None:
 
     assert recovered["title"] == "Two races"
     assert [race["totalLaps"] for race in recovered["races"]] == [20, 30]
+
+
+def test_a_calendar_opens_on_suzuka_when_it_is_in_the_calendar() -> None:
+    """The first race a visitor sees should be the one the twin reproduces best."""
+    others = [{**race_payload(cars=4, laps=10), "circuit": name} for name in ("Austin", "Monza")]
+    suzuka = {**race_payload(cars=4, laps=10), "circuit": OPENING_CIRCUIT}
+
+    assert season_payload([*others, suzuka])["opening"] == 2
+    assert embedded(render_page(season_payload([*others, suzuka])))["opening"] == 2
+
+
+def test_a_calendar_without_suzuka_opens_on_its_first_race() -> None:
+    races = [{**race_payload(cars=4, laps=10), "circuit": name} for name in ("Austin", "Monza")]
+    assert season_payload(races)["opening"] == 0
 
 
 def test_a_page_needs_at_least_one_race() -> None:

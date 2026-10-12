@@ -880,7 +880,9 @@
   const hash = window.location.hash || "";
   const wantedRace = /race=(\d+)/.exec(hash);
   const start = /t=([0-9.]+)(s?)/.exec(hash);
-  const index = wantedRace ? Math.min(RACES.length - 1, Number(wantedRace[1])) : 0;
+  const index = wantedRace
+    ? Math.min(RACES.length - 1, Number(wantedRace[1]))
+    : Math.min(RACES.length - 1, BUNDLE.opening || 0);
   const wantedPanel = /panel=(order|strategy|conditions)/.exec(hash);
   if (wantedPanel) showPanel(wantedPanel[1]);
 
